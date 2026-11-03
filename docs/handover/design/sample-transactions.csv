@@ -1,0 +1,85 @@
+id,date,description,account,category,type,amount,needs_review
+T0001,2026-07-01,NEFT CR ACME TECH PVT LTD SALARY,Savings account,Salary,income,142000,no
+T0002,2026-07-02,BIGBASKET / DMART,Credit card,Groceries,expense,3538.14,no
+T0003,2026-07-02,HPCL FUEL,Credit card,Transport,expense,2573.88,no
+T0004,2026-07-02,HPCL FUEL,Credit card,Transport,expense,2112.33,no
+T0005,2026-07-03,NEFT DR LANDLORD RENT,Savings account,Rent,expense,32000,no
+T0006,2026-07-03,BIGBASKET / DMART,Credit card,Groceries,expense,3281.7,no
+T0007,2026-07-04,BIGBASKET / DMART,Credit card,Groceries,expense,1960.5,no
+T0008,2026-07-04,NETFLIX / SPOTIFY,Credit card,Entertainment,expense,768,no
+T0009,2026-07-05,ECS HOME LOAN EMI,Savings account,Loan EMI,expense,21500,no
+T0010,2026-07-05,HPCL FUEL,Credit card,Transport,expense,1818.57,no
+T0011,2026-07-05,AMAZON PAY,Credit card,Shopping,expense,3611.57,no
+T0012,2026-07-07,SIP MUTUAL FUND,Savings account,Investments,investment,15000,no
+T0013,2026-07-07,BIGBASKET / DMART,Credit card,Groceries,expense,1008.74,no
+T0014,2026-07-08,BIGBASKET / DMART,Credit card,Groceries,expense,1163.07,no
+T0015,2026-07-08,SWIGGY / ZOMATO,Credit card,Dining out,expense,993.69,no
+T0016,2026-07-10,MSEDCL ELECTRICITY BILL,Savings account,Utilities,expense,2011.19,no
+T0017,2026-07-11,AIRTEL POSTPAID,Credit card,Utilities,expense,799,no
+T0018,2026-07-12,CC BILL PAYMENT,Savings account,Card payment,transfer,26509.34,no
+T0019,2026-07-14,BIGBASKET / DMART,Credit card,Groceries,expense,2112.7,no
+T0020,2026-07-14,SWIGGY / ZOMATO,Credit card,Dining out,expense,365.02,no
+T0021,2026-07-19,SWIGGY / ZOMATO,Credit card,Dining out,expense,436.18,no
+T0022,2026-07-19,SWIGGY / ZOMATO,Credit card,Dining out,expense,1342.48,no
+T0023,2026-07-19,SWIGGY / ZOMATO,Credit card,Dining out,expense,944.1,no
+T0024,2026-07-19,AMAZON PAY,Credit card,Shopping,expense,2404.11,no
+T0025,2026-07-19,ATM WDL,Savings account,Cash,expense,5000,no
+T0026,2026-07-27,APOLLO PHARMACY,Credit card,Health,expense,1118.4,no
+T0027,2026-07-28,INTEREST CREDITED,Savings account,Interest,income,697.15,no
+T0028,2026-08-01,NEFT CR ACME TECH PVT LTD SALARY,Savings account,Salary,income,142000,no
+T0029,2026-08-03,NEFT DR LANDLORD RENT,Savings account,Rent,expense,32000,no
+T0030,2026-08-03,BIGBASKET / DMART,Credit card,Groceries,expense,2536.67,no
+T0031,2026-08-04,HPCL FUEL,Credit card,Transport,expense,2063.13,no
+T0032,2026-08-05,ECS HOME LOAN EMI,Savings account,Loan EMI,expense,21500,no
+T0033,2026-08-05,AMAZON PAY,Credit card,Shopping,expense,5653.01,no
+T0034,2026-08-06,HPCL FUEL,Credit card,Transport,expense,2332.86,no
+T0035,2026-08-07,SIP MUTUAL FUND,Savings account,Investments,investment,15000,no
+T0036,2026-08-10,MSEDCL ELECTRICITY BILL,Savings account,Utilities,expense,2321.36,no
+T0037,2026-08-11,AIRTEL POSTPAID,Credit card,Utilities,expense,799,no
+T0038,2026-08-12,CC BILL PAYMENT,Savings account,Card payment,transfer,25477.44,no
+T0039,2026-08-12,BIGBASKET / DMART,Credit card,Groceries,expense,1769.32,no
+T0040,2026-08-14,UPI CR FREELANCE CLIENT,Savings account,Freelance,income,18000,no
+T0041,2026-08-14,AMAZON PAY,Credit card,Shopping,expense,1003.88,no
+T0042,2026-08-16,SWIGGY / ZOMATO,Credit card,Dining out,expense,1262.65,no
+T0043,2026-08-18,NETFLIX / SPOTIFY,Credit card,Entertainment,expense,768,no
+T0044,2026-08-19,BIGBASKET / DMART,Credit card,Groceries,expense,3577.98,no
+T0045,2026-08-19,SWIGGY / ZOMATO,Credit card,Dining out,expense,630.27,no
+T0046,2026-08-19,ATM WDL,Savings account,Cash,expense,3000,no
+T0047,2026-08-20,BIGBASKET / DMART,Credit card,Groceries,expense,1497.28,no
+T0048,2026-08-20,HPCL FUEL,Credit card,Transport,expense,2578.19,no
+T0049,2026-08-22,BIGBASKET / DMART,Credit card,Groceries,expense,2441.99,no
+T0050,2026-08-22,APOLLO PHARMACY,Credit card,Health,expense,393.14,no
+T0051,2026-08-24,SWIGGY / ZOMATO,Credit card,Dining out,expense,793.72,no
+T0052,2026-08-25,BIGBASKET / DMART,Credit card,Groceries,expense,1811.03,no
+T0053,2026-08-25,SWIGGY / ZOMATO,Credit card,Dining out,expense,568.51,no
+T0054,2026-08-26,SWIGGY / ZOMATO,Credit card,Dining out,expense,497.74,no
+T0055,2026-08-28,INTEREST CREDITED,Savings account,Interest,income,791.67,no
+T0056,2026-09-01,NEFT CR ACME TECH PVT LTD SALARY,Savings account,Salary,income,142000,no
+T0057,2026-09-02,HPCL FUEL,Credit card,Transport,expense,1740.03,no
+T0058,2026-09-03,NEFT DR LANDLORD RENT,Savings account,Rent,expense,32000,no
+T0059,2026-09-05,ECS HOME LOAN EMI,Savings account,Loan EMI,expense,21500,no
+T0060,2026-09-05,NETFLIX / SPOTIFY,Credit card,Entertainment,expense,768,no
+T0061,2026-09-06,AMAZON PAY,Credit card,Shopping,expense,3135.77,no
+T0062,2026-09-07,SIP MUTUAL FUND,Savings account,Investments,investment,15000,no
+T0063,2026-09-08,HPCL FUEL,Credit card,Transport,expense,1937.69,no
+T0064,2026-09-09,BIGBASKET / DMART,Credit card,Groceries,expense,2274.89,no
+T0065,2026-09-10,MSEDCL ELECTRICITY BILL,Savings account,Utilities,expense,2290.25,no
+T0066,2026-09-10,SWIGGY / ZOMATO,Credit card,Dining out,expense,1088.29,no
+T0067,2026-09-10,HPCL FUEL,Credit card,Transport,expense,1642.27,no
+T0068,2026-09-11,AIRTEL POSTPAID,Credit card,Utilities,expense,799,no
+T0069,2026-09-12,CC BILL PAYMENT,Savings account,Card payment,transfer,24966.75,no
+T0070,2026-09-15,SWIGGY / ZOMATO,Credit card,Dining out,expense,691.01,no
+T0071,2026-09-18,APOLLO PHARMACY,Credit card,Health,expense,633.41,no
+T0072,2026-09-18,UPI DR 98XXXXXX21,Savings account,Uncategorized,expense,4500,yes
+T0073,2026-09-20,SWIGGY / ZOMATO,Credit card,Dining out,expense,428.81,no
+T0074,2026-09-21,BIGBASKET / DMART,Credit card,Groceries,expense,2576.04,no
+T0075,2026-09-22,BIGBASKET / DMART,Credit card,Groceries,expense,1088.5,no
+T0076,2026-09-22,SWIGGY / ZOMATO,Credit card,Dining out,expense,1204.12,no
+T0077,2026-09-22,SWIGGY / ZOMATO,Credit card,Dining out,expense,681.71,no
+T0078,2026-09-22,POS 4471 MERCHANT,Credit card,Uncategorized,expense,2350,yes
+T0079,2026-09-24,BIGBASKET / DMART,Credit card,Groceries,expense,2934.33,no
+T0080,2026-09-26,BIGBASKET / DMART,Credit card,Groceries,expense,2223.0,no
+T0081,2026-09-27,BIGBASKET / DMART,Credit card,Groceries,expense,1171.43,no
+T0082,2026-09-27,ATM WDL,Savings account,Cash,expense,3000,no
+T0083,2026-09-28,INTEREST CREDITED,Savings account,Interest,income,702.04,no
+T0084,2026-09-28,AMAZON PAY,Credit card,Shopping,expense,3381.83,no

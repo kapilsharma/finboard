@@ -1,0 +1,94 @@
+import uuid
+from collections.abc import Mapping, Sequence
+from typing import Any
+
+from finboard.db.models import Category
+from finboard.db.uow import UnitOfWork
+from finboard.domain.enums import CategoryType
+from finboard.domain.errors import Conflict, NotFound, ValidationFailed
+
+_UPDATABLE = frozenset({"name", "type", "parent_id", "colour", "sort_order", "archived"})
+
+
+class CategoryService:
+    """Categories form at most two levels: top-level categories and their children."""
+
+    def __init__(self, uow: UnitOfWork) -> None:
+        self.uow = uow
+
+    async def list(self) -> Sequence[Category]:
+        return await self.uow.categories.list()
+
+    async def get(self, category_id: uuid.UUID) -> Category:
+        category = await self.uow.categories.get(category_id)
+        if category is None:
+            raise NotFound("Category not found")
+        return category
+
+    async def create(
+        self,
+        *,
+        name: str,
+        type: CategoryType,
+        parent_id: uuid.UUID | None = None,
+        colour: str | None = None,
+    ) -> Category:
+        if parent_id is not None:
+            await self._check_parent(parent_id, child=None)
+        await self._ensure_name_free(name, parent_id)
+        category = await self.uow.categories.add(
+            Category(name=name, type=type, parent_id=parent_id, colour=colour)
+        )
+        await self.uow.commit()
+        return category
+
+    async def update(self, category_id: uuid.UUID, changes: Mapping[str, Any]) -> Category:
+        category = await self.get(category_id)
+        unknown = set(changes) - _UPDATABLE
+        if unknown:
+            raise ValueError(f"not updatable: {sorted(unknown)}")
+
+        if category.is_system and "type" in changes and changes["type"] != category.type:
+            raise Conflict("The type of a system category can't be changed")
+        new_parent = changes.get("parent_id", category.parent_id)
+        if new_parent is not None and new_parent != category.parent_id:
+            await self._check_parent(new_parent, child=category)
+        name = changes.get("name", category.name)
+        parent_id = changes.get("parent_id", category.parent_id)
+        if name.lower() != category.name.lower() or parent_id != category.parent_id:
+            await self._ensure_name_free(name, parent_id, exclude_id=category.id)
+
+        # From M3: a type change also updates the type of the category's transactions.
+        for field, value in changes.items():
+            setattr(category, field, value)
+        await self.uow.session.flush()
+        await self.uow.commit()
+        return category
+
+    async def delete(self, category_id: uuid.UUID) -> None:
+        category = await self.get(category_id)
+        if category.is_system:
+            raise Conflict("System categories can't be deleted")
+        if await self.uow.categories.has_children(category.id):
+            raise Conflict("Delete or move this category's sub-categories first")
+        # From M3: refuse when transactions or rules use it (offer merge instead).
+        await self.uow.categories.delete(category)
+        await self.uow.commit()
+
+    async def _check_parent(self, parent_id: uuid.UUID, *, child: Category | None) -> None:
+        parent = await self.uow.categories.get(parent_id)
+        if parent is None:
+            raise ValidationFailed("Parent category not found")
+        if parent.parent_id is not None:
+            raise ValidationFailed("Sub-categories can't have sub-categories of their own")
+        if child is not None:
+            if child.id == parent.id:
+                raise ValidationFailed("A category can't be its own parent")
+            if await self.uow.categories.has_children(child.id):
+                raise ValidationFailed("A category with sub-categories can't become one")
+
+    async def _ensure_name_free(
+        self, name: str, parent_id: uuid.UUID | None, *, exclude_id: uuid.UUID | None = None
+    ) -> None:
+        if await self.uow.categories.name_taken(name, parent_id, exclude_id=exclude_id):
+            raise Conflict(f"A category called '{name}' already exists here")

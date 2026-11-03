@@ -1,0 +1,47 @@
+# --- Privacy: never commit statements, databases, dumps or exports (docs/ARCHITECTURE.md §13)
+*.pdf
+*.PDF
+*.db
+*.sqlite
+*.sqlite3
+*.sql
+*.dump
+*.zip
+*.xls
+*.xlsx
+.devdata/
+data/
+# The approved dashboard mockup data is synthetic and explicitly allowed:
+!docs/handover/design/*.csv
+
+# --- Secrets
+.env
+.env.*
+!.env.example
+
+# --- Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.import_linter_cache/
+.hypothesis/
+*.egg-info/
+build/
+dist/
+
+# --- Frontend
+node_modules/
+frontend/openapi.json
+frontend/dist/
+backend/src/finboard/web/static/
+*.tsbuildinfo
+
+# --- Editors / OS
+.idea/
+.vscode/*
+!.vscode/extensions.json
+.DS_Store
+Thumbs.db

@@ -1,0 +1,116 @@
+# Finboard — Roadmap
+
+Refines HANDOVER §9. Revision 2 (2026-10-18): async, Postgres, Celery/Redis, ready for multiple users ([ADR-0021](adr/0021-multi-user-ready-single-user-first.md)…[0029](adr/0029-observability.md)). Every milestone ends with green CI and a short demo, and uses **synthetic data only**.
+
+Changes vs §9:
+- **M1 is bigger.** It lays the platform that everything else relies on: async DB, tenancy + RLS, jobs, auth seam, observability.
+- **M4 includes the budgets backend**, because the dashboard needs it.
+- **M6 (real bank adapters)** can start in parallel right after M2.
+- **M8 (post-v1)** turns on real multi-user login.
+
+```mermaid
+flowchart LR
+  M1[M1 Platform skeleton] --> M2[M2 Import pipeline] --> M3[M3 Categorisation] --> M4[M4 Dashboard + txns] --> M5[M5 Settings + data] --> M7[M7 Packaging v1]
+  M2 --> M6[M6 Bank adapters]
+  M6 --> M7
+  M7 -.post-v1.-> M8[M8 Multi-user login]
+```
+
+---
+
+## M0 — Architecture (this phase)
+**Acceptance:** owner approves the docs. *(ADR-0015 and ADR-0017 accepted 2026-10-18.)*
+
+## M1 — Platform skeleton ✅ (2026-10-18)
+*Done: 81 backend tests (integration, tenancy, unit) + 15 frontend tests; ruff, mypy strict, import-linter, oxlint, tsc clean. `finboard init` (secret key) moves to M2 where the first secret is needed; the user-facing compose file stays in M7.*
+
+**Scope:** monorepo. `deploy/compose.dev.yaml` (Postgres 18, Redis 7). FastAPI `create_app` + lifespan. pydantic-settings config. structlog + request-id middleware. Host/Origin/CSRF-header middleware. Async SQLAlchemy engine, UoW, repository base. Alembic async env with roles, RLS helper, `app_user`, `account`, `category`, `job`, settings tables. `AuthBackend` + `LocalSingleUserBackend` + `finboard init` (creates the `local` user, secret key). User provisioning (seed categories). Accounts + categories CRUD (API + Settings tabs). Celery app + `job` resource + a `maintenance.ping` job working end to end. `/me`, `/health/*`, `/meta`. Vite shell + router + `AuthGate` + theme tokens. OpenAPI → TS types. CI pipeline. Privacy checks. Handover moved to `docs/handover/`.
+
+| Acceptance criterion | Proven by |
+|---|---|
+| `docker compose -f deploy/compose.dev.yaml up -d` + `uv run finboard dev` gives API reload, worker and Vite. Edits hot-reload | demo; `tests/integration/test_health.py` (`/health/ready` checks DB + Redis) |
+| `Host: evil.com` → 421. POST without `X-Finboard-Client` → 403. Foreign `Origin` → 403 | `tests/integration/test_security.py` |
+| Tenancy: as user B, every accounts/categories route on user A's ids → 404. RLS hides A's rows from B in raw SQL. Composite FK rejects a cross-user reference | `tests/integration/tenancy/test_isolation.py`, `test_rls.py` |
+| Every table with `user_id` has RLS enabled + forced + a policy | `tests/integration/tenancy/test_rls_coverage.py` (catalog introspection) |
+| Migrations up/down/up clean, and `alembic check` reports no drift | `tests/integration/test_migrations.py` |
+| A job enqueued via API is picked up by the worker, and its status moves queued → running → succeeded | `tests/integration/test_jobs.py` |
+| Logs are JSON with `request_id`, and sensitive keys are redacted | `tests/unit/test_logging.py` |
+| Layer rules enforced. Repo contains no PDFs, dumps or zips | import-linter, privacy job in CI |
+
+## M2 — Import pipeline
+**Scope:** parser SDK v1 (adapter contract), entry-point registry, **`icici_savings_pdf` as the first real adapter** (dogfooding from day one), `generic_table` fallback adapter, `finboard inspect-layout <pdf>` (prints a statement's *structure* locally with every digit → `9` and letter → `X`, so the layout can be shared to build fixtures without exposing data), reportlab builders + contract suite, BlobStore (local FS), `imports.process` Celery task (decrypt, detect, parse, reconcile asset/liability, match account, fingerprint, dedupe, stage), ephemeral password handoff, preview, row edits, commit (`FOR UPDATE`, `ON CONFLICT`), discard, rollback with overlap reassignment, Idempotency-Key, import history, Import page with job polling, Settings › Parsers (read-only) and › Import history.
+
+| Acceptance criterion | Proven by |
+|---|---|
+| Every registered adapter passes the contract suite on Linux, macOS and Windows | `tests/parsers/test_contract.py` (OS matrix) |
+| Owner imports their last 3 real ICICI savings statements locally: all reconcile, and re-import skips everything | owner checklist in PR (no data attached) |
+| `inspect-layout` output contains no digits or letters from the source values | `tests/unit/test_inspect_layout.py` |
+| Encrypted PDF: needs_password → wrong password error → right password → preview | `tests/integration/test_import_flow.py` |
+| Password never in Postgres, job params, broker messages, blobs or logs, and the Redis key is gone after use | `test_import_flow.py::test_password_never_persisted` |
+| Hung adapter is killed by the hard time limit → import `failed`, worker recovers | `tests/integration/test_parse_timeout.py` (sleeping test adapter, real worker) |
+| Same statement twice → 0 inserted, N skipped. Two concurrent commits of overlapping imports → no duplicates | `test_import_flow.py::test_idempotent`, `::test_concurrent_commit` |
+| Rollback of A keeps rows shared with later B | `test_import_flow.py::test_rollback_overlap` |
+| Reconciliation mismatch blocks commit. Override recorded. Credit-card (liability) statement reconciles | `tests/unit/test_reconcile.py`, flow tests |
+| Retried `POST /imports` with the same Idempotency-Key creates one import | `tests/integration/test_idempotency.py` |
+| User B cannot see, commit or roll back user A's import | `tests/integration/tenancy/test_imports_isolation.py` |
+| UI: drop → password → progress → preview → commit | Vitest `ImportPage.test.tsx` (MSW) |
+
+## M3 — Categorisation
+**Scope:** normaliser, matcher (+ regex timeout), categorise in the parse task, rules CRUD/reorder/test/enable, `rules.apply` job (dry run + apply), review groups, CategoriseDialog + rule suggestion, `transfers.suggest` job + confirm/reject, rule pack export/import, starter pack, Settings › Rules.
+
+| Acceptance criterion | Proven by |
+|---|---|
+| Normaliser golden cases (UPI, NEFT, IMPS, POS, ECS, card masks). Hypothesis: idempotent | `tests/unit/test_normalise.py` |
+| First match by priority, id. Constraints AND-ed. Regex timeout disables the rule | `tests/unit/test_matcher.py` |
+| Re-apply respects provenance (manual only with flag; transfer never) | `tests/integration/test_rules_apply.py` |
+| Suggestion for `UPI/DR/412345678901/SWIGGY LTD/…` → `contains SWIGGY`, and the match count is right | `tests/unit/test_suggest.py`, `tests/integration/test_review.py` |
+| Transfer pairing ±3 days, 1:1, rejected pairs not re-suggested, CC payment → Card payment | `tests/unit/test_pairing.py`, `tests/integration/test_transfers.py` |
+| Rule packs leak no account ids and round-trip | `tests/integration/test_rule_packs.py` |
+| 50k txns × 200 rules re-applied in < 10 s in a worker | `tests/perf/test_reapply.py` (`perf`) |
+
+## M4 — Dashboard + transactions
+**Scope:** `domain/metrics.py` + definitions, budgets backend, `/dashboard` (+ ETag via `data_version`), `/transactions` (keyset paging, trigram search), `format.ts`, every mockup section, Transactions page, review banner, inline re-categorise, 400 px layout, light/dark, a11y.
+
+| Acceptance criterion | Proven by |
+|---|---|
+| Golden: Sep 2026 Income ₹1,42,702.04, Spending ₹96,040.38, Net ₹46,661.66, Rate 32.7 %, Δ net −₹22,330.28, 2 over, review 2 | `tests/golden/test_dashboard_golden.py` |
+| Metric edge cases (zero income, no prev month, refunds per ADR-0017) | `tests/unit/test_metrics.py` |
+| `/dashboard` p95 < 200 ms for a 50k-txn user in a 100-user DB. Unchanged data → 304 | `tests/perf/test_dashboard_perf.py`, `tests/integration/test_etag.py` |
+| Load: 200 virtual users, p95 < 300 ms | `tests/load/locustfile.py` (manual run, results in PR) |
+| `₹50K / ₹1L / ₹1.5L / ₹2Cr`. `₹94 over` with no minus | Vitest `format.test.ts`, `LimitBar.test.tsx` |
+| Filters persist across months and reloads (URL). Category click filters. Banner → review | Vitest + Playwright `dashboard.spec.ts` |
+| `aria-sort`, text not colour-only, axe clean in light and dark, no horizontal scroll at 400 px | Playwright |
+| Owner signs off visual parity with `docs/handover/design/dashboard-mockup.png` | screenshot review |
+
+## M5 — Settings polish & data
+**Scope:** Budgets tab (effective-from), category merge, parser enable/options per user, Preferences, `data.export`/`data.import` jobs (per-user logical export: JSON + archived PDFs zip), CSV export, `data.delete_user_data`, staged-import expiry (beat), pre-migration `pg_dump`.
+
+| Acceptance criterion | Proven by |
+|---|---|
+| Budget change from month M leaves earlier months unchanged | `tests/unit/test_budget_lookup.py` |
+| Category merge moves txns, rules and budgets | `tests/integration/test_categories.py::test_merge` |
+| Export → delete-all → import gives an identical dataset (counts + checksums) | `tests/integration/test_export_import.py` |
+| Malicious import zip (traversal, extra members, newer version) rejected | `test_export_import.py::test_rejects_*` |
+| Delete-all removes only the caller's rows and blobs | `tests/integration/tenancy/test_delete_all.py` |
+
+## M6 — Remaining bank adapters (parallel after M2)
+**Scope, in order:** `icici_cc_pdf` (second, because it exercises the liability/reconciliation path early) → `kotak_savings_pdf` → `hsbc_savings_pdf` → `yes_savings_pdf` → `csb_savings_pdf` (order confirmed by owner). Optional later: `hdfc_home_loan_pdf`, LIC premium statement, MF CAS (v2). These are not needed for correct metrics; see ARCHITECTURE §9. Each has a layout-only synthetic fixture builder. The owner validates locally on real statements, which never enter the repo. `CONTRIBUTING.md › How to add your bank` with a `_template` adapter.
+
+| Acceptance criterion | Proven by |
+|---|---|
+| Each adapter passes the contract suite. No cross-detection ≥ 0.5 | `tests/parsers/test_contract.py` |
+| Owner: last 3 real statements per account reconcile. ≥ 80 % auto-categorised with starter pack + own rules | owner checklist in PR (no data attached) |
+| A newcomer can add an adapter from CONTRIBUTING alone | dry run |
+
+## M7 — Packaging v1
+**Scope:** multi-stage Dockerfile (SPA build → slim Python, non-root), `deploy/compose.yaml` (api, worker, beat, db, redis; only api published on 127.0.0.1), `finboard init`, migrations on start under an advisory lock, release workflow (GHCR image on tag), README with demo-data screenshots, CHANGELOG.
+
+| Acceptance criterion | Proven by |
+|---|---|
+| Fresh machine: `init` + `compose up` gives a working app at 127.0.0.1:8765. Data survives `down`/`up` | CI compose smoke job |
+| Postgres and Redis are not reachable from the host network | CI smoke: port probe fails |
+| Image runs as non-root and contains no PDFs, dumps or external URLs in the bundle | CI image checks |
+| Playwright happy path passes against the packaged stack | `e2e/happy-path.spec.ts` |
+
+## M8 — Multi-user login (post-v1, outline)
+**Scope:** `SessionBackend` (argon2id, Redis sessions, HttpOnly cookies, CSRF token), sign-up/login/logout UI in `AuthGate`, `FINBOARD_MODE=server`, per-user quotas and rate limits, `S3BlobStore`, hosting guide (TLS proxy). **Acceptance:** the tenancy suite passes unchanged with real sessions. Load test with 300 users.

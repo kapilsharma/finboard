@@ -1,0 +1,29 @@
+.pageHeader {
+  margin-bottom: var(--space-5);
+}
+
+.subtitle {
+  margin: var(--space-1) 0 0;
+  color: var(--text-muted);
+}
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: var(--space-4) var(--space-5);
+}
+
+.cardTitle {
+  margin-bottom: var(--space-3);
+}
+
+.error {
+  margin: var(--space-2) 0 0;
+  color: var(--bad);
+}
+
+.muted {
+  margin: 0 0 var(--space-2);
+  color: var(--text-muted);
+}

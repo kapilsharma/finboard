@@ -1,0 +1,13 @@
+.state {
+  max-width: 520px;
+  margin: 15vh auto 0;
+  padding: 0 var(--space-4);
+  display: grid;
+  gap: var(--space-3);
+  justify-items: start;
+  color: var(--text-muted);
+}
+
+.state h1 {
+  color: var(--text);
+}

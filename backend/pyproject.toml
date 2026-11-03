@@ -1,0 +1,106 @@
+[project]
+name = "finboard"
+version = "0.1.0"
+description = "Private personal finance: bank-statement import via parser adapters, rule-based categorisation, dashboard."
+requires-python = ">=3.12"
+license = "MIT"
+dependencies = [
+    "fastapi>=0.115,<1",
+    "uvicorn[standard]>=0.30,<1",
+    "pydantic>=2.7,<3",
+    "pydantic-settings>=2.3,<3",
+    "sqlalchemy[asyncio]>=2.0.36,<2.1",
+    "asyncpg>=0.30",
+    "alembic>=1.14,<2",
+    "structlog>=24.4",
+    "celery[redis]>=5.4,<6",
+    "redis>=5.2",
+]
+
+[project.scripts]
+finboard = "finboard.cli:main"
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3,<9",
+    "pytest-asyncio>=0.25",
+    "httpx>=0.28",
+    "hypothesis>=6",
+    "ruff>=0.8",
+    "mypy>=1.13",
+    "import-linter>=2.1",
+]
+
+[build-system]
+requires = ["hatchling>=1.25"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/finboard"]
+
+# ---------------------------------------------------------------- tooling
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "ASYNC", "S", "RUF", "SIM", "PTH"]
+ignore = ["S101"]  # assert is fine in tests and type narrowing
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S105", "S106", "S608", "E501"]
+"src/finboard/db/migrations/**" = ["S608"]
+
+[tool.mypy]
+python_version = "3.12"
+plugins = ["pydantic.mypy"]
+strict = true
+warn_unreachable = true
+mypy_path = "src"
+packages = ["finboard"]
+
+[[tool.mypy.overrides]]
+module = ["celery.*", "kombu.*"]
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "session"
+asyncio_default_test_loop_scope = "session"
+addopts = "-ra --strict-markers"
+markers = ["integration: needs the dev Postgres + Redis (deploy/compose.dev.yaml)"]
+filterwarnings = ["error::DeprecationWarning:finboard.*"]
+
+# Layer rules from docs/ARCHITECTURE.md §3, enforced in CI with `lint-imports`.
+[tool.importlinter]
+root_package = "finboard"
+include_external_packages = true
+
+[[tool.importlinter.contracts]]
+name = "Layered architecture"
+type = "layers"
+layers = [
+    "finboard.cli",
+    "finboard.main",
+    "finboard.api",
+    "finboard.jobs",
+    "finboard.services",
+    "finboard.auth",
+    "finboard.db",
+    "finboard.domain",
+]
+
+[[tool.importlinter.contracts]]
+name = "Domain is pure"
+type = "forbidden"
+source_modules = ["finboard.domain"]
+forbidden_modules = ["fastapi", "starlette", "sqlalchemy", "celery", "redis", "finboard.core.config"]
+
+[[tool.importlinter.contracts]]
+name = "Services know nothing about HTTP or Celery"
+type = "forbidden"
+source_modules = ["finboard.services"]
+forbidden_modules = ["fastapi", "starlette", "celery"]

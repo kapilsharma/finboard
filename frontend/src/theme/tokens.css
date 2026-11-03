@@ -1,0 +1,78 @@
+/* Semantic design tokens. Components and charts use only these, never raw colours.
+   Theme = system (follows the OS) unless <html data-theme="light|dark"> overrides it. */
+
+:root {
+  --font-sans: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --font-serif: 'Source Serif 4', Georgia, 'Times New Roman', serif;
+
+  --radius: 8px;
+  --radius-sm: 6px;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+
+  --bg: #f8f7f4;
+  --surface: #ffffff;
+  --surface-muted: #f2f0eb;
+  --border: #e6e2da;
+  --border-strong: #d4cfc4;
+  --text: #1f1d1a;
+  --text-muted: #6b665d;
+  --accent: #2f6db5;
+  --accent-text: #ffffff;
+  --good: #2e7d4f;
+  --bad: #c8463a;
+  --warn: #c9962b;
+  --focus: #2f6db5;
+
+  --series-income: #2f6db5;
+  --series-spending: #d0813a;
+  --series-net: #3a9a5b;
+
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    --bg: #151412;
+    --surface: #1e1d1b;
+    --surface-muted: #262522;
+    --border: #33312d;
+    --border-strong: #46433d;
+    --text: #ece9e3;
+    --text-muted: #a39e94;
+    --accent: #6ea2e3;
+    --accent-text: #0e1620;
+    --good: #5fbf83;
+    --bad: #ef7a6c;
+    --warn: #e0b452;
+    --focus: #6ea2e3;
+    --series-income: #6ea2e3;
+    --series-spending: #e59a55;
+    --series-net: #5fbf83;
+    color-scheme: dark;
+  }
+}
+
+:root[data-theme='dark'] {
+  --bg: #151412;
+  --surface: #1e1d1b;
+  --surface-muted: #262522;
+  --border: #33312d;
+  --border-strong: #46433d;
+  --text: #ece9e3;
+  --text-muted: #a39e94;
+  --accent: #6ea2e3;
+  --accent-text: #0e1620;
+  --good: #5fbf83;
+  --bad: #ef7a6c;
+  --warn: #e0b452;
+  --focus: #6ea2e3;
+  --series-income: #6ea2e3;
+  --series-spending: #e59a55;
+  --series-net: #5fbf83;
+  color-scheme: dark;
+}
