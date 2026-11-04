@@ -135,3 +135,20 @@ def test_sdk_helpers() -> None:
     assert parse_date("not a date") is None
     assert last_digits("XXXX XXXX 1234") == "1234"
     assert last_digits("XX12") is None
+
+
+class _TimeLimit(Exception):
+    """Stands in for Celery's SoftTimeLimitExceeded (an Exception subclass)."""
+
+
+def test_time_limit_in_detect_propagates_instead_of_scoring_zero() -> None:
+    class Slow(FakeParser):
+        def detect(self, doc: OpenedDocument) -> float:
+            raise _TimeLimit()
+
+    reg = registry(Slow("slow"), FakeParser("ok", 0.9))
+    with pytest.raises(_TimeLimit):
+        reg.detect(DOC, reraise=(_TimeLimit,))
+    # Without `reraise` a raising detect is just "not mine".
+    detection = reg.detect(DOC)
+    assert detection.chosen is not None and detection.chosen.parser_id == "ok"

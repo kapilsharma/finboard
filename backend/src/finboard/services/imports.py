@@ -448,17 +448,20 @@ class ImportService:
         await self.uow.commit()
 
         try:
-            result = await self._process(batch, secret_ref)
+            result = await self._process(batch, secret_ref, timeout_errors)
         except ImportFailed as exc:
             await self._fail(import_id, exc.detail, candidates=exc.candidates)
             raise
-        except timeout_errors as exc:
+        except timeout_errors:
             await self._fail(import_id, MSG_TIMEOUT)
-            raise ImportFailed(MSG_TIMEOUT) from exc
+            raise ImportFailed(MSG_TIMEOUT) from None
         except Exception as exc:
+            # The message of an unexpected error may quote statement contents: log the type,
+            # keep the traceback at DEBUG, and don't chain it into the job failure.
             log.error("import.process_error", import_id=str(import_id), error=type(exc).__name__)
+            log.debug("import.process_traceback", import_id=str(import_id), exc_info=True)
             await self._fail(import_id, MSG_UNREADABLE)
-            raise ImportFailed(MSG_UNREADABLE) from exc
+            raise ImportFailed(MSG_UNREADABLE) from None
         finally:
             await self.start_waiting()
         return result
@@ -482,7 +485,12 @@ class ImportService:
             await self.uow.rollback()
             log.error("import.start_waiting_failed", error=type(exc).__name__)
 
-    async def _process(self, batch: ImportBatch, secret_ref: str | None) -> dict[str, Any]:
+    async def _process(
+        self,
+        batch: ImportBatch,
+        secret_ref: str | None,
+        timeout_errors: tuple[type[BaseException], ...],
+    ) -> dict[str, Any]:
         password: str | None = None
         if secret_ref is not None:
             password = await self.secrets.take(secret_ref) if self.secrets else None
@@ -515,13 +523,15 @@ class ImportService:
                 parser = self.registry.get(batch.requested_parser_id)
                 if parser is None:
                     raise ImportFailed(f"Parser '{batch.requested_parser_id}' isn't installed")
-                detection = self.registry.detect(doc)
+                detection = self.registry.detect(doc, reraise=timeout_errors)
                 confidence = next(
                     (c.confidence for c in detection.candidates if c.parser_id == parser.id), 0.0
                 )
             else:
                 detection = self.registry.detect(
-                    doc, preferred_id=account.parser_id if account else None
+                    doc,
+                    preferred_id=account.parser_id if account else None,
+                    reraise=timeout_errors,
                 )
                 chosen = detection.chosen
                 if chosen is None:

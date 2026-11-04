@@ -116,7 +116,13 @@ async def run_job(
             job.error = exc.detail if isinstance(exc, FinboardError) else "Internal error"
             job.finished_at = datetime.now(UTC)
             await uow.commit()
-        log.exception("job.failed", kind=job.kind)
+        if isinstance(exc, FinboardError):  # expected, with a user-safe message
+            log.warning("job.failed", kind=job.kind, code=exc.code)
+        else:
+            # Exception messages and tracebacks can carry statement data: type at ERROR,
+            # traceback only at DEBUG (ARCHITECTURE §8).
+            log.error("job.failed", kind=job.kind, error=type(exc).__name__)
+            log.debug("job.failed_traceback", kind=job.kind, exc_info=True)
         raise
 
 

@@ -142,11 +142,13 @@ class ParserRegistry:
         file_type: str = ".pdf",
         preferred_id: str | None = None,
         enabled: Sequence[str] | None = None,
+        reraise: tuple[type[BaseException], ...] = (),
     ) -> Detection:
         """Score every enabled parser for this file type and pick one.
 
         Bank-specific parsers at or above the threshold win over fallbacks; a fallback is
-        chosen only when no specific parser recognises the file.
+        chosen only when no specific parser recognises the file. A parser whose detect raises
+        scores 0, except for `reraise` exceptions (the worker's time limit), which propagate.
         """
         candidates: list[Candidate] = []
         for parser in self.all():
@@ -156,6 +158,8 @@ class ParserRegistry:
                 continue
             try:
                 score = float(parser.detect(doc))
+            except reraise:
+                raise
             except Exception as exc:  # detect must never raise; treat a bug as "not mine"
                 log.warning("parsers.detect_failed", parser_id=parser.id, error=type(exc).__name__)
                 score = 0.0

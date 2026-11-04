@@ -1,5 +1,6 @@
 """Celery task entry points. Keep them thin: parse ids, then call into services."""
 
+import contextlib
 import os
 import uuid
 from typing import Any
@@ -12,6 +13,7 @@ from celery.worker.request import Request
 from finboard.core.config import get_settings
 from finboard.db.models import Job
 from finboard.db.uow import UnitOfWork
+from finboard.domain.errors import FinboardError
 from finboard.jobs import runtime
 from finboard.jobs.celery_app import celery_app
 from finboard.jobs.queue import CeleryJobQueue
@@ -112,4 +114,7 @@ def process_import(job_id: str, user_id: str, secret_ref: str | None = None) -> 
             ctx.sessionmaker, user_id=uuid.UUID(user_id), job_id=uuid.UUID(job_id), handler=handler
         )
 
-    runtime.run(work)
+    # Expected failures (bad file, unknown layout, timeout) are already recorded on the job and
+    # the import with a user-safe message; they aren't worker errors.
+    with contextlib.suppress(FinboardError):
+        runtime.run(work)
