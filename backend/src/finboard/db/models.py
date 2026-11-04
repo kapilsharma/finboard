@@ -424,6 +424,19 @@ class Budget(UUIDPrimaryKey, UserOwned, Timestamps, Base):
     )
 
 
+class UserParserSetting(UserOwned, Timestamps, Base):
+    """One user's choices for one installed parser: enabled or not, and its options
+    (validated against the adapter's `options_schema` before they are stored)."""
+
+    __tablename__ = "user_parser_setting"
+
+    parser_id: Mapped[str] = mapped_column(String(64))
+    enabled: Mapped[bool] = mapped_column(server_default=text("true"))
+    options: Mapped[dict[str, Any]] = mapped_column(server_default=text("'{}'::jsonb"))
+
+    __table_args__ = (PrimaryKeyConstraint("user_id", "parser_id"),)
+
+
 class UserSetting(Base):
     __tablename__ = "user_setting"
 
@@ -448,4 +461,5 @@ USER_OWNED_TABLES = (
     "rule",
     "transfer_pair",
     "budget",
+    "user_parser_setting",
 )

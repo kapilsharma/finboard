@@ -83,6 +83,28 @@ class CategoryService:
         await self.uow.categories.delete(category)
         await self.uow.commit()
 
+    async def merge(
+        self, source_id: uuid.UUID, into_id: uuid.UUID
+    ) -> tuple[Category, dict[str, int]]:
+        """Move the source's transactions, rules and budgets to `into`, then delete the source
+        (ARCHITECTURE §10). Merging into a category of another type changes those transactions'
+        type too."""
+        if source_id == into_id:
+            raise ValidationFailed("Choose a different category to merge into")
+        source = await self.get(source_id)
+        target = await self.uow.categories.get(into_id)
+        if target is None:
+            raise ValidationFailed("The category to merge into doesn't exist")
+        if source.is_system:
+            raise Conflict("System categories can't be merged away; merge others into them")
+        if await self.uow.categories.has_children(source.id):
+            raise Conflict("Move or merge this category's sub-categories first")
+        moved = await self.uow.categories.merge_into(source.id, target)
+        await self.uow.categories.delete(source)
+        await self.uow.users.bump_data_version(self.uow.user_id)
+        await self.uow.commit()
+        return target, moved
+
     async def _check_parent(self, parent_id: uuid.UUID, *, child: Category | None) -> None:
         parent = await self.uow.categories.get(parent_id)
         if parent is None:

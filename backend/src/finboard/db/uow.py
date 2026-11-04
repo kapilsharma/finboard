@@ -20,6 +20,7 @@ from finboard.db.repos import (
     ImportRepo,
     ImportRowRepo,
     JobRepo,
+    ParserSettingRepo,
     RuleRepo,
     SettingRepo,
     StagedRowRepo,
@@ -88,6 +89,10 @@ class UnitOfWork:
     @property
     def dashboard(self) -> DashboardRepo:
         return DashboardRepo(self.session, self.user_id)
+
+    @property
+    def parser_settings(self) -> ParserSettingRepo:
+        return ParserSettingRepo(self.session, self.user_id)
 
     @property
     def rules(self) -> RuleRepo:

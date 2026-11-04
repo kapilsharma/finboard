@@ -1,11 +1,11 @@
 import uuid
 from datetime import date
 
-from fastapi import APIRouter
+from fastapi import APIRouter, status
 
 from finboard.api.deps import BudgetServiceDep
 from finboard.api.routers.dashboard import Month
-from finboard.api.schemas import BudgetList, BudgetOut, BudgetPut
+from finboard.api.schemas import BudgetHistory, BudgetList, BudgetOut, BudgetPut
 from finboard.services.dashboard import parse_month
 
 router = APIRouter(prefix="/budgets", tags=["budgets"])
@@ -30,3 +30,20 @@ async def put_budget(
         monthly_limit=body.monthly_limit,
     )
     return BudgetOut.model_validate(budget)
+
+
+@router.get("/history")
+async def budget_history(
+    service: BudgetServiceDep, category_id: uuid.UUID | None = None
+) -> BudgetHistory:
+    """Every limit change, oldest first (optionally for one category)."""
+    rows = await service.history(category_id)
+    return BudgetHistory(items=[BudgetOut.model_validate(b) for b in rows])
+
+
+@router.delete("/{category_id}/{month}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_budget_change(
+    category_id: uuid.UUID, month: str, service: BudgetServiceDep
+) -> None:
+    """Undo the limit change made from `month` (YYYY-MM); the earlier limit applies again."""
+    await service.remove_change(category_id, parse_month(month))

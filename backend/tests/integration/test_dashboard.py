@@ -119,3 +119,25 @@ async def test_demo_data_refuses_a_finboard_with_transactions(
     await demo(sessionmaker, alice)
     with pytest.raises(Conflict):
         await demo(sessionmaker, alice)
+
+
+async def test_budget_history_and_undo(
+    client: httpx.AsyncClient, sessionmaker: async_sessionmaker[AsyncSession], alice: Principal
+) -> None:
+    await demo(sessionmaker, alice)
+    dining = await category_id(client, "Dining out")
+    await client.put(
+        f"{API}/budgets/{dining}", json={"effective_from": "2026-09", "monthly_limit": "5000.00"}
+    )
+    history = (await client.get(f"{API}/budgets/history", params={"category_id": dining})).json()[
+        "items"
+    ]
+    assert [(h["effective_from"], h["monthly_limit"]) for h in history] == [
+        ("2026-07-01", "4000.00"),
+        ("2026-09-01", "5000.00"),
+    ]
+    assert (await client.delete(f"{API}/budgets/{dining}/2026-09")).status_code == 204
+    september = await dashboard(client, month="2026-09")
+    item = next(i for i in september["categories"]["items"] if i["category"]["id"] == dining)
+    assert item["limit"] == "4000.00"
+    assert (await client.delete(f"{API}/budgets/{dining}/2026-09")).status_code == 404

@@ -37,6 +37,7 @@ from finboard.db.models import (
     StagedRow,
     TransferPair,
     Txn,
+    UserParserSetting,
     UserSetting,
 )
 from finboard.domain.enums import (
@@ -188,6 +189,51 @@ class CategoryRepo(_UserScoped):
     async def in_use(self, category_id: uuid.UUID) -> bool:
         stmt = select(exists().where(Txn.user_id == self.user_id, Txn.category_id == category_id))
         return bool(await self.session.scalar(stmt))
+
+    async def merge_into(self, source: uuid.UUID, target: Category) -> dict[str, int]:
+        """Point everything at `source` to `target`: transactions (with the target's type),
+        staged rows, rules and budget changes. Where both categories have a budget change for
+        the same month, the target's wins. Returns counts moved."""
+        u = self.user_id
+        txns = await self.session.execute(
+            update(Txn)
+            .where(Txn.user_id == u, Txn.category_id == source)
+            .values(category_id=target.id, type=target.type)
+            .execution_options(synchronize_session=False)
+        )
+        await self.session.execute(
+            update(StagedRow)
+            .where(StagedRow.user_id == u, StagedRow.category_id == source)
+            .values(category_id=target.id)
+            .execution_options(synchronize_session=False)
+        )
+        rules = await self.session.execute(
+            update(Rule)
+            .where(Rule.user_id == u, Rule.category_id == source)
+            .values(category_id=target.id)
+            .execution_options(synchronize_session=False)
+        )
+        taken = select(Budget.effective_from).where(
+            Budget.user_id == u, Budget.category_id == target.id
+        )
+        await self.session.execute(
+            delete(Budget).where(
+                Budget.user_id == u,
+                Budget.category_id == source,
+                Budget.effective_from.in_(taken.scalar_subquery()),
+            )
+        )
+        budgets = await self.session.execute(
+            update(Budget)
+            .where(Budget.user_id == u, Budget.category_id == source)
+            .values(category_id=target.id)
+            .execution_options(synchronize_session=False)
+        )
+        return {
+            "transactions": int(txns.rowcount or 0),  # type: ignore[attr-defined]
+            "rules": int(rules.rowcount or 0),  # type: ignore[attr-defined]
+            "budgets": int(budgets.rowcount or 0),  # type: ignore[attr-defined]
+        }
 
     async def used_by_rules(self, category_id: uuid.UUID) -> bool:
         stmt = select(exists().where(Rule.user_id == self.user_id, Rule.category_id == category_id))
@@ -854,25 +900,24 @@ class TransferRepo(_UserScoped):
 
 
 class BudgetRepo(_UserScoped):
-    async def effective(self, month_start: date) -> dict[uuid.UUID, Decimal | None]:
-        """Each category's limit for the month: the row with the greatest effective_from on or
-        before it. Categories without one are absent; a NULL limit means "no limit"."""
-        stmt = (
-            select(Budget.category_id, Budget.monthly_limit)
-            .where(Budget.user_id == self.user_id, Budget.effective_from <= month_start)
-            .order_by(Budget.category_id, Budget.effective_from.desc())
-            .distinct(Budget.category_id)
-        )
-        return {cid: limit for cid, limit in (await self.session.execute(stmt)).all()}
-
-    async def effective_rows(self, month_start: date) -> list[Budget]:
-        stmt = (
-            select(Budget)
-            .where(Budget.user_id == self.user_id, Budget.effective_from <= month_start)
-            .order_by(Budget.category_id, Budget.effective_from.desc())
-            .distinct(Budget.category_id)
-        )
+    async def history(self, category_id: uuid.UUID | None = None) -> list[Budget]:
+        """Every limit change, oldest first. Small (a few rows per category): the lookup for a
+        month happens in `domain.budgets`."""
+        stmt = select(Budget).where(Budget.user_id == self.user_id)
+        if category_id is not None:
+            stmt = stmt.where(Budget.category_id == category_id)
+        stmt = stmt.order_by(Budget.category_id, Budget.effective_from)
         return list((await self.session.scalars(stmt)).all())
+
+    async def delete_entry(self, category_id: uuid.UUID, effective_from: date) -> bool:
+        result = await self.session.execute(
+            delete(Budget).where(
+                Budget.user_id == self.user_id,
+                Budget.category_id == category_id,
+                Budget.effective_from == effective_from,
+            )
+        )
+        return bool(result.rowcount)  # type: ignore[attr-defined]
 
     async def put(
         self, category_id: uuid.UUID, effective_from: date, limit: Decimal | None
@@ -955,3 +1000,19 @@ class DashboardRepo(_UserScoped):
             Txn.date <= end,
         )
         return int(await self.session.scalar(stmt) or 0)
+
+
+class ParserSettingRepo(_UserScoped):
+    async def all(self) -> dict[str, UserParserSetting]:
+        stmt = select(UserParserSetting).where(UserParserSetting.user_id == self.user_id)
+        return {s.parser_id: s for s in (await self.session.scalars(stmt)).all()}
+
+    async def put(self, parser_id: str, *, enabled: bool, options: dict[str, Any]) -> None:
+        stmt = insert(UserParserSetting).values(
+            user_id=self.user_id, parser_id=parser_id, enabled=enabled, options=options
+        )
+        stmt = stmt.on_conflict_do_update(
+            index_elements=[UserParserSetting.user_id, UserParserSetting.parser_id],
+            set_={"enabled": enabled, "options": options, "updated_at": func.now()},
+        )
+        await self.session.execute(stmt)
