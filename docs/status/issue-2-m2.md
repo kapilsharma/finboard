@@ -15,25 +15,10 @@ Branch `issue-2-import-pipeline`. Last updated 2026-11-04. Delete this file when
   light, dark and at 400 px (no horizontal page scroll).
 
 ## Remaining
-1. **CI** (`.github/workflows/ci.yml`):
-   - `backend-portable`: run `uv run pytest tests/unit tests/parsers` (the contract suite on all 3 OSes).
-   - New `e2e` job (ubuntu, postgres:18 + redis:7 services, run `deploy/postgres/init/01-finboard.sh`
-     like backend-integration): `cd frontend && npm ci && npm run build`, then
-     `cd e2e && npm ci && npx playwright install --with-deps chromium && npx playwright test`.
-   - Mirror both in `scripts/ci-local.sh` (e2e step only without `--fast`; needs `npx playwright
-     install chromium` once). Run `bash scripts/ci-local.sh` until green.
-2. **Docs**:
-   - `docs/ROADMAP.md` M2: mark done (date) and note the deviations below.
-   - New ADR-0033 (fallback parsers: a `fallback` attribute ranks generic parsers below
-     bank-specific ones; fixture builders are discovered via the `finboard.parser_fixtures`
-     entry-point group) and ADR-0034 (per-user parse cap: extra uploads wait as `uploaded` and
-     a worker starts them when a slot frees; hard kills are recorded by `ParseTask.Request.on_timeout`).
-     Add both to `docs/adr/README.md`.
-   - ARCHITECTURE: §3 note on `storage`/`parsers` layers; §8 `fallback` + fixture entry points;
-     §15 e2e runs against `finboard serve` (compose stack arrives in M7).
-   - `CONTRIBUTING.md` › "How to add your bank": copy `backend/src/finboard/parsers/builtin/_template/`,
-     use `finboard inspect-layout`, register both entry points, run `uv run pytest tests/parsers`.
-3. **PR**: push, open with `Closes #2`, a summary, and the decisions/deviations list.
+Done on 2026-11-04 in a cloud session: CI (contract suite on 3 OSes, `e2e` job) mirrored in
+`scripts/ci-local.sh` (green end to end), ROADMAP M2 marked done, ADR-0033 and ADR-0034,
+ARCHITECTURE §3/§8/§15, CONTRIBUTING › How to add your bank. Left: open the PR (`Closes #2`)
+and get CI green on it.
 
 ## Deviations / decisions to list in the PR
 - `icici_savings_pdf` is not in this PR: it's issue #9 (blocked on owner layout). The ROADMAP row

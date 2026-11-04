@@ -42,13 +42,22 @@ flowchart LR
 | Logs are JSON with `request_id`, and sensitive keys are redacted | `tests/unit/test_logging.py` |
 | Layer rules enforced. Repo contains no PDFs, dumps or zips | import-linter, privacy job in CI |
 
-## M2 — Import pipeline
+## M2 — Import pipeline ✅ (2026-11-04)
+*Done: 233 backend tests (unit, parser contract, integration, tenancy; incl. the hung-parser hard kill on Linux) + 24 frontend tests + the first Playwright e2e test; ruff, mypy strict, import-linter, oxlint, tsc clean. CI runs the contract suite on Linux, macOS and Windows, and has an e2e job. Deviations:*
+- *`icici_savings_pdf` is not in M2. It needs the owner's statement layout and moves to issue #9, together with the row "owner imports 3 real ICICI statements". M2 ships `generic_table` (fallback) and a working contributor `_template` adapter.*
+- *Fallback parsers rank below bank-specific ones, and fixture builders are discovered through the `finboard.parser_fixtures` entry points ([ADR-0033](adr/0033-fallback-parsers-and-fixture-discovery.md)).*
+- *Per-user parse cap (default 2): extra uploads wait as `uploaded`. Hard kills are recorded by `Request.on_timeout` ([ADR-0034](adr/0034-parse-cap-and-hard-kill.md)).*
+- *Vitest uses the existing `mockApi()` fetch stub, not MSW. The e2e test runs against `finboard serve` + a worker on `finboard_test` (`e2e/stack.py`), not the M7 compose stack.*
+- *Reconciliation uses the account's type (credit_card/loan = liability) once the account is known, otherwise the parser's `balance_kind`. A running-balance break is a mismatch even when the totals agree.*
+- *Until M3, committed rows go to Uncategorized / Uncategorized income with `needs_review`, and `description_norm` is the dedupe form.*
+- *Account delete → 409 when it has transactions; category delete → 409 when in use.*
+
 **Scope:** parser SDK v1 (adapter contract), entry-point registry, **`icici_savings_pdf` as the first real adapter** (dogfooding from day one), `generic_table` fallback adapter, `finboard inspect-layout <pdf>` (prints a statement's *structure* locally with every digit → `9` and letter → `X`, so the layout can be shared to build fixtures without exposing data), reportlab builders + contract suite, BlobStore (local FS), `imports.process` Celery task (decrypt, detect, parse, reconcile asset/liability, match account, fingerprint, dedupe, stage), ephemeral password handoff, preview, row edits, commit (`FOR UPDATE`, `ON CONFLICT`), discard, rollback with overlap reassignment, Idempotency-Key, import history, Import page with job polling, Settings › Parsers (read-only) and › Import history.
 
 | Acceptance criterion | Proven by |
 |---|---|
 | Every registered adapter passes the contract suite on Linux, macOS and Windows | `tests/parsers/test_contract.py` (OS matrix) |
-| Owner imports their last 3 real ICICI savings statements locally: all reconcile, and re-import skips everything | owner checklist in PR (no data attached) |
+| ~~Owner imports their last 3 real ICICI savings statements locally: all reconcile, and re-import skips everything~~ | moved to issue #9 (`icici_savings_pdf`) |
 | `inspect-layout` output contains no digits or letters from the source values | `tests/unit/test_inspect_layout.py` |
 | Encrypted PDF: needs_password → wrong password error → right password → preview | `tests/integration/test_import_flow.py` |
 | Password never in Postgres, job params, broker messages, blobs or logs, and the Redis key is gone after use | `test_import_flow.py::test_password_never_persisted` |
@@ -58,7 +67,7 @@ flowchart LR
 | Reconciliation mismatch blocks commit. Override recorded. Credit-card (liability) statement reconciles | `tests/unit/test_reconcile.py`, flow tests |
 | Retried `POST /imports` with the same Idempotency-Key creates one import | `tests/integration/test_idempotency.py` |
 | User B cannot see, commit or roll back user A's import | `tests/integration/tenancy/test_imports_isolation.py` |
-| UI: drop → password → progress → preview → commit | Vitest `ImportPage.test.tsx` (MSW) |
+| UI: drop → password → progress → preview → commit | Vitest `ImportPage.test.tsx` (`mockApi`); Playwright `e2e/tests/import.spec.ts` |
 
 ## M3 — Categorisation
 **Scope:** normaliser, matcher (+ regex timeout), categorise in the parse task, rules CRUD/reorder/test/enable, `rules.apply` job (dry run + apply), review groups, CategoriseDialog + rule suggestion, `transfers.suggest` job + confirm/reject, rule pack export/import, starter pack, Settings › Rules.
@@ -132,7 +141,7 @@ flowchart LR
 | Delete-all removes only the caller's rows and blobs | `tests/integration/tenancy/test_delete_all.py` |
 
 ## M6 — Remaining bank adapters (parallel after M2)
-**Scope, in order:** `icici_cc_pdf` (second, because it exercises the liability/reconciliation path early) → `kotak_savings_pdf` → `hsbc_savings_pdf` → `yes_savings_pdf` → `csb_savings_pdf` (order confirmed by owner). Optional later: `hdfc_home_loan_pdf`, LIC premium statement, MF CAS (v2). These are not needed for correct metrics; see ARCHITECTURE §9. Each has a layout-only synthetic fixture builder. The owner validates locally on real statements, which never enter the repo. `CONTRIBUTING.md › How to add your bank` with a `_template` adapter.
+**Scope, in order:** `icici_savings_pdf` (issue #9, moved from M2) → `icici_cc_pdf` (second, because it exercises the liability/reconciliation path early) → `kotak_savings_pdf` → `hsbc_savings_pdf` → `yes_savings_pdf` → `csb_savings_pdf` (order confirmed by owner). Optional later: `hdfc_home_loan_pdf`, LIC premium statement, MF CAS (v2). These are not needed for correct metrics; see ARCHITECTURE §9. Each has a layout-only synthetic fixture builder. The owner validates locally on real statements, which never enter the repo. `CONTRIBUTING.md › How to add your bank` and the `_template` adapter landed early, in M2.
 
 | Acceptance criterion | Proven by |
 |---|---|
