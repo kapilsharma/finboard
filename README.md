@@ -1,8 +1,14 @@
 # Finboard
 
 A private personal-finance app. Import your bank statements (password-protected PDFs), let
-**rules you control** categorise every transaction (no AI), and see where your money goes:
+**rules you control** categorise every transaction, and see where your money goes:
 income, spending, savings rate, budgets and per-account totals.
+
+Optional AI features (off by default, planned for M3a/M4a): **category suggestions** computed
+entirely on your machine with embeddings in pgvector, and **Ask Finboard**: questions like *"monthly
+breakdown of eating out and provisions in the last six months"* answered as a chart you can pin to
+the dashboard (LangGraph + Gemini Flash; the LLM never sees your transactions). See
+[ARCHITECTURE §18](docs/ARCHITECTURE.md#18-ai-features-optional).
 
 Your data stays on your machine. The code is open source (MIT); your statements never are.
 
@@ -44,7 +50,11 @@ Open http://127.0.0.1:5173. API docs: http://127.0.0.1:8765/api/docs.
 - Never commit statements, databases, dumps or exports. A pre-commit hook and CI enforce this
   (`scripts/check_no_private_data.py`). Install hooks with `uvx pre-commit install`.
 - Test fixtures are generated synthetic PDFs. Never attach a real statement to an issue.
-- Nothing calls out to the internet: no telemetry, no CDNs, no update checks.
+- Nothing calls out to the internet: no telemetry, no CDNs, no update checks. The one opt-in
+  exception is *Ask Finboard*, which sends only your question, the query schema, your category
+  names and anonymised account labels to the LLM you configure (on Gemini's free tier, Google may use that
+  text to improve its products). Transactions, descriptions and amounts never leave
+  the machine ([ADR-0030](docs/adr/0030-assistive-ai-opt-in.md)).
 
 ## Licence
 

@@ -1,6 +1,6 @@
 # ADR-0022: PostgreSQL 18 as the only database
 
-**Status:** Accepted (owner decision 2026-10-18). Supersedes [ADR-0004](0004-sqlite-in-user-data-dir.md).
+**Status:** Accepted (owner decision 2026-10-18). Supersedes [ADR-0004](0004-sqlite-in-user-data-dir.md). Amended by [ADR-0031](0031-pgvector-embeddings.md): image `pgvector/pgvector:pg18` and the `vector` extension (from M3a).
 
 **Decision.** PostgreSQL 18 (official `postgres:18` image in Compose; any managed PG 18 when hosted). Driver: asyncpg. Extensions: `pg_trgm` (description search), `citext` (emails). Two roles: `finboard_owner` (migrations, owns tables) and `finboard_app` (runtime, `NOBYPASSRLS`).
 

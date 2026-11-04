@@ -1,12 +1,12 @@
 # Finboard — Architecture
 
-> Status: **draft for review**, revision 2 (2026-10-18). The backend is now async, ready for multiple users, uses PostgreSQL and runs background jobs on Celery/Redis.
+> Status: **draft for review**, revision 3 (2026-11-04). Revision 2 made the backend async, ready for multiple users, on PostgreSQL with Celery/Redis jobs. Revision 3 adds optional AI features (§18).
 > Inputs: [`handover/HANDOVER.md`](handover/HANDOVER.md), [`handover/design/`](handover/design/). Decisions: [`adr/`](adr/README.md).
 > Plan: [`ROADMAP.md`](ROADMAP.md). Unresolved: [`OPEN_QUESTIONS.md`](OPEN_QUESTIONS.md).
 
 **Design stance ([ADR-0021](adr/0021-multi-user-ready-single-user-first.md)):** v1 is still run by one person on their own machine. The *architecture* assumes hundreds of users from day one: async I/O, stateless API instances, every row owned by a user, isolation enforced in the database, slow work on a job queue, and auth behind one dependency. Going from "my laptop" to "hosted for many" should mean swapping implementations, not redesigning.
 
-Contents: [1 Overview](#1-system-overview) · [2 Repo layout](#2-repo-layout) · [3 Backend modules](#3-backend-modules) · [4 FastAPI at scale](#4-fastapi-at-scale-request-lifecycle--patterns) · [5 Data model](#5-data-model) · [6 Background jobs](#6-background-jobs) · [7 Import pipeline](#7-import-pipeline) · [8 Parser adapters](#8-parser-adapters-plugin-system) · [9 Categorisation](#9-categorisation-engine) · [10 REST API](#10-rest-api) · [11 Frontend](#11-frontend-architecture) · [12 Metrics](#12-metric-definitions-single-spec) · [13 Security](#13-security--privacy) · [14 Scaling](#14-scaling--capacity) · [15 Testing & CI](#15-testing-strategy--ci) · [16 Run experience](#16-developer--user-run-experience) · [17 Extension points](#17-extension-points)
+Contents: [1 Overview](#1-system-overview) · [2 Repo layout](#2-repo-layout) · [3 Backend modules](#3-backend-modules) · [4 FastAPI at scale](#4-fastapi-at-scale-request-lifecycle--patterns) · [5 Data model](#5-data-model) · [6 Background jobs](#6-background-jobs) · [7 Import pipeline](#7-import-pipeline) · [8 Parser adapters](#8-parser-adapters-plugin-system) · [9 Categorisation](#9-categorisation-engine) · [10 REST API](#10-rest-api) · [11 Frontend](#11-frontend-architecture) · [12 Metrics](#12-metric-definitions-single-spec) · [13 Security](#13-security--privacy) · [14 Scaling](#14-scaling--capacity) · [15 Testing & CI](#15-testing-strategy--ci) · [16 Run experience](#16-developer--user-run-experience) · [17 Extension points](#17-extension-points) · [18 AI features](#18-ai-features-optional)
 
 ---
 
@@ -93,6 +93,7 @@ finboard/
 │   │   ├── services/               # use cases (async), one per area; own the transaction boundary
 │   │   ├── domain/                 # enums, errors; later money, metrics, fingerprint, reconcile (pure)
 │   │   ├── categorisation/         # normalise, matcher, suggest, pairing                 (pure)
+│   │   ├── ai/                     # optional (M3a/M4a): embeddings, suggest, spec, sql_guard, graph, llm (§18)
 │   │   ├── db/
 │   │   │   ├── base.py · engine.py # async engine (asyncpg), session factory, RLS hook
 │   │   │   ├── models.py           # SQLAlchemy 2 ORM models (+ USER_OWNED_TABLES)
@@ -248,6 +249,7 @@ erDiagram
 | **job** | `kind` · `status` CHECK IN (queued, running, succeeded, failed, cancelled) · `progress` SMALLINT · `params` JSONB (never secrets) · `result` JSONB · `error` · `celery_task_id` · `started_at`, `finished_at` | idx(`user_id`,`created_at` DESC) |
 | **user_parser_setting** | `parser_id` · `enabled` · `options` JSONB | PK(`user_id`,`parser_id`) |
 | **user_setting** | `key` · `value` JSONB | PK(`user_id`,`key`) |
+| *AI (optional)* | `txn_embedding`, `ask_query`, `dashboard_widget`, views `ai_txn`/`ai_budget` (plus a per-request SQLite sandbox, not in Postgres) | see §18 |
 
 New users get the default category set and starter rule pack (`services/users.py::provision`). In local mode one user, `local`, is created on first start.
 
@@ -272,6 +274,7 @@ Inserts use `INSERT … ON CONFLICT (user_id, fingerprint) DO NOTHING RETURNING 
 |---|---|---|
 | `parse` | `imports.process(import_id)` — decrypt, detect, parse, reconcile, match, dedupe, categorise, stage | prefork, concurrency = CPU cores, **`soft_time_limit=60`, `time_limit=75`** (hard kill of a hung parse), `max_tasks_per_child=50`, `max_memory_per_child=512MB` |
 | `default` | `rules.apply`, `transfers.suggest`, `data.export`, `data.import`, `data.delete_user_data` | prefork, concurrency 2–4 |
+| `ai` (optional) | `ai.embed(txn_ids)`, `ai.embed_all()` | concurrency 1; the embedding model is loaded once per process |
 | beat | `maintenance.expire_staged` (hourly), `maintenance.requeue_stale` (5 min), `maintenance.purge_jobs` (daily) | single instance |
 
 Conventions:
@@ -437,6 +440,7 @@ flowchart LR
   - LIC premiums → *Insurance* (expense, new seed category; owner decision).
   - All 13 MF SIP debits → the single *Investments* category (investment).
   - A home-loan (HDFC) or LIC statement imported later goes to a `loan`/`insurance` account. Its rows default to the transfer-type system category *Account movement*, so nothing is counted twice. Transfer pairing never pairs into `loan`, `insurance` or `mutual_fund` accounts.
+- **AI suggestions (optional, M3a).** Embedding nearest neighbours propose a category for transactions under review. They are only suggestions: accepting one is a manual categorisation, and "Make a rule" feeds the rule suggester above. Rules remain the only thing that auto-categorises ([ADR-0030](adr/0030-assistive-ai-opt-in.md), §18).
 - **Rule packs** are YAML/JSON. Categories are referenced by path, account constraints are stripped on export, and imports use `safe_load` + Pydantic, merging or replacing.
 
 ---
@@ -458,7 +462,8 @@ Base `/api/v1`. Money is a decimal string, dates are `YYYY-MM-DD`, months are `Y
 | Accounts | CRUD (delete only if no transactions; otherwise archive) |
 | Budgets | `GET /budgets?month=` · `PUT /budgets/{category_id} {effective_from, monthly_limit\|null}` |
 | Parsers | `GET /parsers` (installed + load failures + my settings) · `PATCH /parsers/{id} {enabled?, options?}` |
-| Dashboard | `GET /dashboard/months` · `GET /dashboard?month=&trail=12` |
+| Dashboard | `GET /dashboard/months` · `GET /dashboard?month=&trail=12` · `GET /dashboard/widgets` · `DELETE /dashboard/widgets/{id}` |
+| AI (optional, §18) | `GET /transactions/{id}/suggestions` · `POST /ask {question}` · `GET /ask/history` · `DELETE /ask/history/{id}` · `POST /ask/{id}/pin` |
 | Settings | `GET /settings` · `PATCH /settings` |
 | Data | `POST /data/export` → 202 (zip of my data + archived PDFs) · `GET /data/exports/{id}` (download) · `POST /data/import` → 202 · `GET /data/transactions.csv` · `POST /data/delete-all {confirm:"DELETE ALL"}` → 202 |
 
@@ -563,6 +568,7 @@ The formulas and `METRIC_DEFINITIONS` (label, formula text, tooltip) live in **`
 | Untrusted structured input | `yaml.safe_load` + Pydantic. No eval or pickle (Celery uses the **JSON** serializer). Regex timeout. Data-import zips validated (members, sizes, schema version) | same |
 | Data at rest | Docker volumes on the owner's disk, protected by **OS disk encryption** (BitLocker/FileVault/LUKS), as decided in OQ-15 | managed-DB encryption |
 | Logs | JSON. Ids, counts and timings only, **never** descriptions, amounts, file names or passwords (a structlog processor redacts known keys) | ship to the operator's log stack |
+| Outbound AI (opt-in) | Off by default; the operator makes it available, each user opts in. With Ask on, only the question, the catalog, category paths and **account aliases** go to the configured LLM. **Never** transactions, descriptions, amounts, account names, results, or raw database errors. One outbound module, tracing forced off, rows kept out of graph state, canary tests ([ADR-0030](adr/0030-assistive-ai-opt-in.md)). Category suggestions are local. Model-written SQL never runs in Postgres: only in a per-request SQLite sandbox holding the caller's rows ([ADR-0032](adr/0032-nl-analytics-langgraph.md)) | same; provider key from a secrets manager |
 | Telemetry | None. No update checks. Assets bundled. `pytest-socket` blocks network in unit tests. OTel exporter off unless configured | opt-in operator OTel |
 | Repo hygiene | `.gitignore`, pre-commit and CI checks against tracked PDFs, dumps and zips. Fixtures generated at test time | — |
 
@@ -595,6 +601,7 @@ Design target: **hundreds of users, each with up to ~50k transactions** (≈ 25M
 | **Tenancy** (`tests/integration/tenancy`) | pytest, two provisioned users | every route parametrised: user B gets 404 for user A's ids. Raw SQL as `finboard_app` with A's `app.user_id` sees 0 of B's rows (RLS). Composite-FK test |
 | Migrations | Alembic | `upgrade → downgrade → upgrade`; `alembic check` for model drift; RLS policy present on every user-owned table (introspection test) |
 | Golden | pytest | sample CSV → mockup numbers |
+| AI (optional) | pytest with a fake/recorded chat model; `finboard ai eval` (manual, live) | suggestion accuracy, SQL guard corpus, privacy canaries, AI tenancy; live execution accuracy → `docs/ai-eval.md` (§18) |
 | Load / perf | Locust 2; pytest `perf` marker | budgets in §14 (perf marker in CI; Locust on demand) |
 | Frontend | Vitest 5, Testing Library, a small `fetch` stub (MSW 2 once API mocking grows) | `format.ts`, LimitBar, DeltaBadge, URL-state filters, `useJob` polling, `aria-sort` |
 | E2E | Playwright | against `docker compose up`: upload encrypted synthetic PDF → unlock → preview reconciles → commit → review + rule → dashboard figures → re-import skipped. axe scan in light and dark |
@@ -634,3 +641,91 @@ Upgrades: `docker compose pull && up -d`. Before migrating, the api writes a `pg
 - **Households / shared accounts**: introduce `workspace` + `membership`, and move the tenancy key from `user_id` to `workspace_id`. Isolation is centralised in the UoW and the RLS policies, so this is a mechanical migration.
 - **New inputs**: more adapters on the same SDK (`OpenedDocument.tabular` for CSV/XLS, CAMS/KFintech CAS for MF holdings in v2).
 - **Holdings/NAV (v2)**: new tables (`holding`, `nav_snapshot`). `txn` is untouched.
+- **More AI (ideas, not planned)**: Q&A over bank terms and statement notes (RAG on the same pgvector store), monthly insight summaries from aggregates (would need OQ-33 to change), and anomaly flags for unusual spending.
+
+---
+
+## 18. AI features (optional)
+
+Decisions: [ADR-0030](adr/0030-assistive-ai-opt-in.md) (scope and privacy boundary), [ADR-0031](adr/0031-pgvector-embeddings.md) (pgvector), [ADR-0032](adr/0032-nl-analytics-langgraph.md) (Ask Finboard, including why model SQL runs in a sandbox). Milestones: M3a, M4a. **Both features are off by default.** With them off, nothing in this section runs and nothing leaves the machine.
+
+**Why it's here.** Finboard is also a Python + AI portfolio project. The AI features are built the way the rest of the system is built: typed, tested, isolated per user, measured, and with the deterministic engine still in charge.
+
+```mermaid
+flowchart LR
+  subgraph local["Your machine"]
+    direction LR
+    TX[(txn)] -- description_norm --> EMB["ai.embed job<br/>fastembed · MiniLM"] --> V[("txn_embedding<br/>pgvector · RLS")]
+    V --> SUG["suggestions<br/>kNN vote"] --> UI1[CategoriseDialog]
+    Q[question] --> G["LangGraph<br/>understand → build/generate → guard → execute → chart"]
+    G -- "spec path: builder SQL, app role, RLS" --> VW[("ai_txn · ai_budget views")]
+    G -- "SQL path: model SQL" --> SB[("SQLite sandbox<br/>caller's rows only")]
+    VW -- "load caller's rows" --> SB
+    VW & SB --> RS[("result store<br/>(not in graph state)")] --> UI2["Ask panel · pinned widgets"]
+  end
+  G -. "question + catalog + category paths + account aliases" .-> LLM["Gemini Flash<br/>(or local Ollama)"]
+```
+
+### Modules
+
+| Module | Purpose | May depend on |
+|---|---|---|
+| `ai/__init__.py` | Forces LangSmith/LangChain tracing off at import (env override) | — |
+| `ai/embeddings.py` | Load the ONNX model once per worker process, embed text in batches | `core` |
+| `ai/suggest.py` | kNN vote → `Suggestion(category_id, confidence, examples)` (pure, given neighbours) | `domain` |
+| `ai/spec.py` | `QuerySpec` Pydantic model + deterministic SQL builder on the §12 metric definitions | `domain` |
+| `ai/sql_guard.py` | `sqlglot`: one SELECT, `ai_txn`/`ai_budget` only, **function allow-list**, transpile Postgres → SQLite | stdlib, `sqlglot` |
+| `ai/sandbox.py` | Per-request in-memory SQLite: load the caller's rows, `set_authorizer` (reads + allow-listed functions only), `query_only`, 3 s progress-handler cut-off, 1,000-row cap | stdlib |
+| `ai/graph.py` | LangGraph state graph for Ask. State holds ids and shape summaries, never rows | `ai.*` |
+| `ai/llm.py` | **The only outbound module.** Builds the allow-listed request (account aliases, locally generated retry messages), calls the provider, maps 429/timeout to `AiUnavailable` | `core`, LangChain |
+| `ai/catalog.yaml` | Sandbox table and column descriptions used in prompts; versioned | — |
+| `services/ai.py` | Use cases: suggestions, ask, history, pins. Imports AI libraries lazily; reports features unavailable without the `ai` extra | `ai`, `db`, `domain` |
+| `jobs/tasks.py` | `ai.embed(txn_ids)`, `ai.embed_all()` on the `ai` queue (concurrency 1, keeps RAM low). `finboard worker` consumes `ai` when suggestions are available | `services` |
+
+`api` never imports `ai` directly. import-linter adds `ai` between `services` and `domain`.
+
+### Data
+
+| Table / object | Columns / definition | Notes |
+|---|---|---|
+| **txn_embedding** | `txn_id` · `model` · `embedding vector(384)` · `created_at` | PK(`user_id`,`txn_id`), composite FK → `txn` ON DELETE CASCADE, RLS. No ANN index until perf needs one |
+| **ask_query** | `question` · `path` (spec, sql) · `spec` JSONB NULL · `sql` TEXT NULL · `catalog_version` · `status` · `retries` · `latency_ms` · `model` · `tokens_in/out` | History. **Results are not stored.** Deletable. RLS |
+| **dashboard_widget** | `ask_query_id` · `title` · `chart` JSONB · `sort_order` | Pinned questions, re-run locally on view. Pinned SQL is re-guarded on every refresh; a catalog-version mismatch shows "needs updating". RLS |
+| `ai_txn` (view) | `date`, `month`, `account` (alias), `account_type`, `category`, `parent_category`, `type`, `direction`, `signed_amount` (per ADR-0017), `merchant` (= `payee_label` or normalised description) | **Ordinary view** (not `security_invoker`): RLS applies through it because the policies are `FORCE`d. Read only by the app role: by the spec builder, and to load the sandbox |
+| `ai_budget` (view) | `month`, `category`, `monthly_limit` | same |
+| SQLite sandbox | tables `ai_txn`, `ai_budget` with the views' columns; money as integer `signed_paise` / `limit_paise` | Created per request in memory, discarded afterwards. The only place model-written SQL runs |
+
+### Category suggestions (M3a)
+1. After an import commits, `ai.embed` embeds `description_norm` for the new transactions. The text has no amounts or reference numbers; the normaliser already strips them.
+2. For a transaction under review, the service fetches the 10 nearest embeddings among the user's transactions with `categorised_by IN (rule, manual)` (cosine distance, same direction), weights votes by similarity, and returns the top 3 above a confidence floor.
+3. The UI shows each suggestion with its closest examples. **Accept** sets the category manually. **Make a rule** opens the M3 rule editor pre-filled. Nothing is applied automatically.
+4. **Evaluation** uses generated description variants (typos, different UPI handles, truncation, reordered tokens), not exact repeats, which rules would already catch. It is compared with a simple baseline (character n-gram TF-IDF / `rapidfuzz`). The embedding approach ships only if it beats the baseline.
+
+### Ask Finboard (M4a)
+- The flow and the guard and sandbox layers are in [ADR-0032](adr/0032-nl-analytics-langgraph.md). Spec path first (runs in Postgres, no model-written SQL), SQL path as a fallback (runs only in the SQLite sandbox), at most 2 retries, and a clarifying question when the request is ambiguous.
+- **Prompt contents** (enforced by the typed request in `ai/llm.py`): system instructions, `catalog.yaml`, the user's category paths, account aliases (`Account A — savings, ICICI Bank`), today's date, and the question. On a retry, only a locally generated error description is added: the guard's reason, or an error class plus identifiers from the model's own SQL. The database's own error text is never forwarded.
+- **Response:** `{query_id, path, spec | sql, columns, rows, chart: {kind: bar|grouped_bar|line|table, x, series}, answer}`. The chart renders with the existing d3 + React SVG components ([ADR-0012](adr/0012-charts-d3-react-svg.md)).
+- **Pinning** stores the spec, or the validated SQL plus the catalog version. Widgets re-run locally on each dashboard load, so there's no LLM call and no network.
+- **UI disclosure** next to the question box: the question is sent to the configured provider, and on Gemini's free tier Google may use it to improve its products, including human review.
+
+### Configuration
+
+The operator decides whether a feature is *available*; each user opts in under Settings › AI (`user_setting` keys `ai.suggestions`, `ai.ask`, default off).
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `FINBOARD_AI_SUGGESTIONS` | `off` | Local category suggestions available on this server |
+| `FINBOARD_AI_ASK` | `off` | `off` · `gemini` · `ollama`: Ask available, and with which provider |
+| `FINBOARD_AI_ASK_SQL` | `off` | Allow the SQL fallback path (turn on once the M4a sandbox tests pass, OQ-34) |
+| `FINBOARD_AI_MODEL` | a Gemini Flash model id | Provider model id (Flash models are on the Gemini free tier) |
+| `FINBOARD_GEMINI_API_KEY` | — | From Google AI Studio. In `.env` only, never committed |
+| `FINBOARD_OLLAMA_URL` | `http://127.0.0.1:11434` | Local fallback |
+| `FINBOARD_EMBED_MODEL` | `sentence-transformers/all-MiniLM-L6-v2` | Changing it triggers `ai.embed_all` |
+
+### Testing
+- **Unit:** the kNN vote, the spec → SQL builder (golden SQL), the SQL guard (attack corpus + Hypothesis), the sandbox (authorizer denies non-allow-listed functions, `ATTACH`, `PRAGMA` and writes; 3 s cut-off; row cap), retry-message scrubbing, and chart choice.
+- **Graph:** nodes are tested with a fake chat model. Full-graph tests replay **recorded** provider responses, so CI never calls the network. A test asserts that no graph state snapshot contains result rows.
+- **Privacy boundary:** canary strings are planted in the fixtures (descriptions, amounts, account display names). The test fails if any of them appears in any LLM request, including retries. A second test sets the LangSmith tracing variables and asserts tracing stays off.
+- **Tenancy:** the AI tables and views are included in the RLS coverage test and the isolation suite. The sandbox loader is tested to load only the caller's rows.
+- **Suggestion eval:** generated variants plus the baseline comparison (M3a acceptance).
+- **Live evaluation:** `finboard ai eval [--model …]` runs the golden questions against the real provider, reports execution accuracy, path, retries, latency and tokens, and writes `docs/ai-eval.md`. It runs manually, because of the free-tier rate limits.

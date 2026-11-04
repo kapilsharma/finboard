@@ -2,17 +2,22 @@
 
 Refines HANDOVER §9. Revision 2 (2026-10-18): async, Postgres, Celery/Redis, ready for multiple users ([ADR-0021](adr/0021-multi-user-ready-single-user-first.md)…[0029](adr/0029-observability.md)). Every milestone ends with green CI and a short demo, and uses **synthetic data only**.
 
+Revision 3 (2026-11-04): adds **optional AI features** ([ADR-0030](adr/0030-assistive-ai-opt-in.md)…[0032](adr/0032-nl-analytics-langgraph.md)): local category suggestions (**M3a**) and natural-language questions answered as charts (**M4a**). Finboard is also the owner's Python + AI portfolio project, so these milestones are about learning LangChain, LangGraph, embeddings, pgvector and LLM evaluation, without weakening the privacy promise.
+
 Changes vs §9:
 - **M1 is bigger.** It lays the platform that everything else relies on: async DB, tenancy + RLS, jobs, auth seam, observability.
 - **M4 includes the budgets backend**, because the dashboard needs it.
 - **M6 (real bank adapters)** can start in parallel right after M2.
 - **M8 (post-v1)** turns on real multi-user login.
+- **M3a and M4a (AI, opt-in)** come right after the milestones whose data they need. Both ship in v1 but are off by default.
 
 ```mermaid
 flowchart LR
   M1[M1 Platform skeleton] --> M2[M2 Import pipeline] --> M3[M3 Categorisation] --> M4[M4 Dashboard + txns] --> M5[M5 Settings + data] --> M7[M7 Packaging v1]
   M2 --> M6[M6 Bank adapters]
   M6 --> M7
+  M3 --> M3a[M3a AI suggestions] --> M7
+  M4 --> M4a[M4a Ask Finboard] --> M7
   M7 -.post-v1.-> M8[M8 Multi-user login]
 ```
 
@@ -68,6 +73,21 @@ flowchart LR
 | Rule packs leak no account ids and round-trip | `tests/integration/test_rule_packs.py` |
 | 50k txns × 200 rules re-applied in < 10 s in a worker | `tests/perf/test_reapply.py` (`perf`) |
 
+## M3a — AI category suggestions (local, after M3)
+*AI is optional and off by default ([ADR-0030](adr/0030-assistive-ai-opt-in.md)). Can run in parallel with M4.*
+
+**Scope:** `ai` optional extra (`fastembed`, ONNX runtime, no PyTorch, so it stays light on a 16 GB laptop). DB image → `pgvector/pgvector:pg18` in `compose.dev.yaml` and the CI service. Migration: `vector` extension + `txn_embedding` with RLS ([ADR-0031](adr/0031-pgvector-embeddings.md)). `finboard ai fetch-model` (the only download; then offline). `ai.embed` (after each commit) and `ai.embed_all` (backfill, re-embed on model change) on a new `ai` queue, concurrency 1. Suggestion service: k-nearest neighbours (k = 10, cosine) over the user's rule/manual-categorised txns → weighted vote → top 3 with confidence and the nearest examples as the "why". `GET /transactions/{id}/suggestions`. CategoriseDialog and review groups show suggestions, with **Accept** (manual) and **Make a rule** (feeds the M3 rule suggester). Settings › AI per-user opt-in (the operator's `FINBOARD_AI_SUGGESTIONS` only makes it available). `finboard worker` consumes the `ai` queue when suggestions are available. Suggestion eval on generated description variants with a character n-gram / `rapidfuzz` baseline.
+
+| Acceptance criterion | Proven by |
+|---|---|
+| Without the `ai` extra, the app starts and every M1–M3 test passes | CI job without the extra |
+| A suggestion is never applied automatically. Accepting one sets `categorised_by=manual` | `tests/integration/test_ai_suggestions.py` |
+| On generated description variants (typos, UPI handles, truncation; exact repeats excluded), embeddings beat the n-gram / `rapidfuzz` baseline on top-1 accuracy. Both numbers recorded in the PR; if they don't, M3a ships the baseline instead | `tests/ai/test_suggest_eval.py` |
+| Suggestions appear only for users who opted in, on a server where the feature is available | `tests/integration/test_ai_suggestions.py` |
+| User B never gets user A's neighbours (RLS on `txn_embedding`) | `tests/integration/tenancy/test_ai_isolation.py` |
+| After `fetch-model`, embedding runs with the network blocked | `pytest-socket` in `tests/ai/` |
+| Owner's laptop: 5k txns embedded in < 60 s, worker RSS < 600 MB | `perf` marker (manual run, results in PR) |
+
 ## M4 — Dashboard + transactions
 **Scope:** `domain/metrics.py` + definitions, budgets backend, `/dashboard` (+ ETag via `data_version`), `/transactions` (keyset paging, trigram search), `format.ts`, every mockup section, Transactions page, review banner, inline re-categorise, 400 px layout, light/dark, a11y.
 
@@ -81,6 +101,24 @@ flowchart LR
 | Filters persist across months and reloads (URL). Category click filters. Banner → review | Vitest + Playwright `dashboard.spec.ts` |
 | `aria-sort`, text not colour-only, axe clean in light and dark, no horizontal scroll at 400 px | Playwright |
 | Owner signs off visual parity with `docs/handover/design/dashboard-mockup.png` | screenshot review |
+
+## M4a — Ask Finboard (after M4)
+*Natural-language questions → chart, with pinning to the dashboard ([ADR-0032](adr/0032-nl-analytics-langgraph.md)). Off by default. The LLM never sees transaction data ([ADR-0030](adr/0030-assistive-ai-opt-in.md)).*
+
+**Scope:** `ai_txn` / `ai_budget` views (ordinary views, RLS applies; migration). Per-request **SQLite sandbox** (`ai/sandbox.py`) for model-written SQL, loaded with the caller's rows only ([ADR-0032](adr/0032-nl-analytics-langgraph.md)). `finboard/ai/catalog.yaml` (versioned sandbox table and column descriptions for prompts). `QuerySpec` (Pydantic) + deterministic SQL builder on the §12 metric definitions. LangGraph graph: understand → build or generate SQL → guard (`sqlglot`, function allow-list, transpile to SQLite) → execute (spec: Postgres, read-only, RLS, 3 s; SQL: sandbox with authorizer, 3 s, 1,000 rows) → retry ≤ 2 with locally generated error text → choose chart → templated answer, or a clarifying question. `finboard.ai.llm` (the single outbound module): LangChain chat model, **Gemini Flash** by default (`langchain-google-genai`), Ollama optional, 429 handling, account aliases instead of names, tracing forced off, rows kept out of graph state (local result store). SQL path behind `FINBOARD_AI_ASK_SQL` (off until the sandbox tests pass). Endpoints: `POST /ask` · `GET /ask/history` · `DELETE /ask/history/{id}` · `POST /ask/{id}/pin` · `GET /dashboard/widgets` · `DELETE /dashboard/widgets/{id}`. UI: an Ask panel on the dashboard (question box with a note that the question is sent to <provider> and, on Gemini's free tier, may be used to improve Google's products, chart or table, "show query", Pin). Pinned widgets render below the mockup sections. Eval harness: `finboard ai eval` with ~30 golden questions → `docs/ai-eval.md`. README: demo GIF + eval table.
+
+| Acceptance criterion | Proven by |
+|---|---|
+| "Give a monthly breakdown of eating out and provisions in the last six months" → grouped bars, month × category, totals equal to the dashboard's | `tests/golden/test_ask_golden.py` (recorded LLM response) |
+| No LLM request contains any description, amount, balance or account number from the fixtures (canary values) | `tests/ai/test_privacy_boundary.py` |
+| Guard rejects DML/DDL, multiple statements, base tables (e.g. `txn`), deny-listed functions and comments hiding statements | `tests/unit/test_sql_guard.py` (+ Hypothesis) |
+| Even with the guard bypassed, model SQL in the sandbox sees only the caller's rows, and the authorizer blocks non-allow-listed functions, `ATTACH`, `PRAGMA` and writes | `tests/unit/test_sandbox.py`, `tests/integration/tenancy/test_ask_isolation.py` |
+| Retry messages contain no data values (canary in a failing cast); tracing stays off with LangSmith env vars set; no graph state snapshot contains result rows | `tests/ai/test_privacy_boundary.py` |
+| Pinned SQL is re-guarded on refresh; a catalog-version change shows "needs updating" instead of numbers | `test_ask.py::test_pinned_widget_catalog_change` |
+| A slow query is cut off at 3 s. Provider 429 or timeout → problem+json `ai_unavailable`, no 500 | `tests/integration/test_ask.py` (fake LLM) |
+| Refreshing a pinned widget makes no LLM call | `test_ask.py::test_pinned_widget_offline` |
+| `FINBOARD_AI_ASK=off`, or the user hasn't opted in → `/ask` returns 404 and the panel is hidden | `test_ask.py`, Vitest |
+| Live eval: spec-path execution accuracy ≥ 80 %, SQL path reported separately | `finboard ai eval` (manual; results committed to `docs/ai-eval.md`) |
 
 ## M5 — Settings polish & data
 **Scope:** Budgets tab (effective-from), category merge, parser enable/options per user, Preferences, `data.export`/`data.import` jobs (per-user logical export: JSON + archived PDFs zip), CSV export, `data.delete_user_data`, staged-import expiry (beat), pre-migration `pg_dump`.

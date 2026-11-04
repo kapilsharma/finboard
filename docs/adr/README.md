@@ -9,7 +9,7 @@ Status values: **Accepted (given)** = fixed by HANDOVER §2 · **Accepted** · *
 | [0002](0002-python-fastapi-backend.md) | Python + FastAPI backend | Accepted (given) |
 | [0003](0003-react-typescript-vite.md) | React + TypeScript (Vite) | Accepted (given) |
 | [0004](0004-sqlite-in-user-data-dir.md) | SQLite in user data dir | ~~Accepted (given)~~ Superseded by 0022 |
-| [0005](0005-no-ai-deterministic-rules.md) | No AI; deterministic rules | Accepted (given) |
+| [0005](0005-no-ai-deterministic-rules.md) | No AI; deterministic rules | Accepted (given), amended by 0030 |
 | [0006](0006-inr-locale-and-mit-licence.md) | INR / en-IN; MIT | Accepted (given) |
 | [0007](0007-orm-sqlalchemy2-sync.md) | SQLAlchemy 2 sync | Superseded by 0023 |
 | [0008](0008-money-numeric-decimal.md) | Money: NUMERIC(14,2) / Decimal / strings | Accepted (revised) |
@@ -26,7 +26,7 @@ Status values: **Accepted (given)** = fixed by HANDOVER §2 · **Accepted** · *
 | [0019](0019-styling-css-modules.md) | CSS Modules + CSS variables | Accepted |
 | [0020](0020-regex-rules-with-timeout.md) | Regex rules with a timeout | Accepted |
 | [0021](0021-multi-user-ready-single-user-first.md) | Multi-user-ready, single user first | Accepted (owner) |
-| [0022](0022-postgresql.md) | PostgreSQL 18 only | Accepted (owner) |
+| [0022](0022-postgresql.md) | PostgreSQL 18 only | Accepted (owner), amended by 0031 |
 | [0023](0023-async-sqlalchemy.md) | Async SQLAlchemy, UoW, repositories | Accepted (owner) |
 | [0024](0024-celery-redis-jobs.md) | Celery + Redis background jobs | Accepted (owner) |
 | [0025](0025-tenant-isolation-rls.md) | Tenant isolation: user_id, composite FKs, RLS | Accepted |
@@ -34,3 +34,6 @@ Status values: **Accepted (given)** = fixed by HANDOVER §2 · **Accepted** · *
 | [0027](0027-statement-password-handoff.md) | Ephemeral encrypted password handoff | Accepted |
 | [0028](0028-uuidv7-primary-keys.md) | UUIDv7 primary keys | Accepted |
 | [0029](0029-observability.md) | Observability without telemetry | Accepted |
+| [0030](0030-assistive-ai-opt-in.md) | Assistive AI, opt-in, strict privacy boundary | Accepted (owner) |
+| [0031](0031-pgvector-embeddings.md) | pgvector for embeddings in Postgres | Accepted (owner) |
+| [0032](0032-nl-analytics-langgraph.md) | Ask Finboard: spec-first NL analytics with LangGraph | Accepted (owner) |

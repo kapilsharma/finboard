@@ -1,6 +1,6 @@
 # Open questions
 
-Revision 3 (2026-10-18). Each open item has a **recommended default**, so work proceeds unless Kapil says otherwise. Resolved items are kept for the record.
+Revision 4 (2026-11-04: AI questions added). Each open item has a **recommended default**, so work proceeds unless Kapil says otherwise. Resolved items are kept for the record.
 
 ## Resolved
 
@@ -19,6 +19,8 @@ Revision 3 (2026-10-18). Each open item has a **recommended default**, so work p
 | OQ-27 | Order of remaining adapters | **ICICI CC → Kotak → HSBC → Yes → CSB** savings |
 | — | ADR-0015 (proxy, no CORS, CSRF header) | **Accepted** |
 | — | Async / multi-user / DB / jobs | Async; multi-user ready, single user first; PostgreSQL; Celery + Redis |
+| OQ-29 | AI in Finboard? | **Yes, optional and assistive** (2026-11-04). Finboard becomes the Python + AI portfolio project instead of a separate RAG demo. Rules stay authoritative, and the LLM never sees transaction data ([ADR-0030](adr/0030-assistive-ai-opt-in.md)) |
+| OQ-30 | Which LLM? | **Gemini Flash on the free tier** (owner checked it's free to start). Provider kept swappable (LangChain). Ollama as an optional offline fallback |
 
 ## Open
 
@@ -40,3 +42,11 @@ Revision 3 (2026-10-18). Each open item has a **recommended default**, so work p
 | OQ-22 | Tenancy unit: user or household? | **User** in v1 | — |
 | OQ-23 | Login method in M8 | Own passwords (argon2id + sessions) first, OIDC later | M8 |
 | OQ-24 | Celery prefork unsupported on Windows hosts | Dev worker uses `--pool=solo` on Windows or runs in Docker | M1 |
+| OQ-31 | Vector store | **pgvector in the existing Postgres** (`pgvector/pgvector:pg18`): one DB, RLS applies, no extra service on the laptop ([ADR-0031](adr/0031-pgvector-embeddings.md)). Alternatives were ChromaDB, FAISS and Qdrant | M3a |
+| OQ-32 | Embedding model | **`all-MiniLM-L6-v2` via fastembed** (384-dim, ~90 MB, CPU/ONNX). Compare with `bge-small-en-v1.5` on the suggestion eval before M3a closes; Indian merchant strings may favour one | M3a |
+| OQ-33 | Send result aggregates to the LLM for a written summary? | **No.** Answers come from local templates. Revisit only as a separate, explicit opt-in | M4a |
+| OQ-34 | Free-form SQL path on by default? | **Off until the M4a sandbox acceptance tests pass, then on** (`FINBOARD_AI_ASK_SQL`). Review found that Postgres-side limits can be undone by `set_config()` from a SELECT, so model SQL runs only in a per-request SQLite sandbox holding the caller's rows ([ADR-0032](adr/0032-nl-analytics-langgraph.md)) | M4a |
+| OQ-35 | Keep Ask history? | **Yes, locally**: question + spec/SQL + timings, never results. Each entry can be deleted, and delete-all covers it | M4a |
+| OQ-37 | Account names in prompts? | **No: aliases** (`Account A — savings, ICICI Bank`), mapped back locally. Names can contain employer names or account digits, and the model doesn't need them | M4a |
+| OQ-38 | Per-user AI opt-in vs server switch? | **Both**: the operator makes a feature available (env), each user opts in (Settings › AI, default off), following ADR-0021 | M3a |
+| OQ-36 | Ollama fallback in v1? | **Optional and documented**, not tested in CI (recorded responses cover the graph). A 1–3B model is the practical limit on a 16 GB laptop | M4a |
