@@ -8,11 +8,14 @@ describe('app shell', () => {
     mockApi({
       'GET /me': () => ({ body: ME }),
       'GET /settings': () => ({ body: { theme: 'system' } }),
+      'GET /dashboard': () => ({ body: null }),
+      'GET /dashboard/months': () => ({ body: { months: [] } }),
     })
     renderRoute('/')
     expect(await screen.findByRole('navigation', { name: 'Main' })).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Dashboard' })).toHaveAttribute('aria-current', 'page')
-    expect(screen.getByRole('heading', { name: 'Personal finance' })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'Personal finance' })).toBeInTheDocument()
+    expect(screen.getByText(/No transactions yet/)).toBeInTheDocument()
   })
 
   it('explains when the server is unreachable', async () => {

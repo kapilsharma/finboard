@@ -1,0 +1,125 @@
+.filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+}
+
+.search {
+  flex: 1 1 220px;
+}
+
+.search input {
+  width: 100%;
+}
+
+.filters button[aria-pressed='true'] {
+  background: var(--surface-muted);
+  border-color: var(--text-muted);
+  font-weight: 500;
+}
+
+.tableWrap {
+  overflow-x: auto;
+}
+
+.scroller {
+  overflow: auto;
+  max-height: 70vh;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+
+.table {
+  font-size: 0.9rem;
+}
+
+.table th {
+  position: sticky;
+  top: 0;
+  background: var(--surface);
+  z-index: 1;
+  padding: 0;
+}
+
+.sortButton {
+  width: 100%;
+  border: 0;
+  background: none;
+  text-align: inherit;
+  padding: 8px 10px;
+  min-height: auto;
+  color: inherit;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.num .sortButton {
+  text-align: right;
+}
+
+.sortMark {
+  display: inline-block;
+  min-width: 1em;
+  font-size: 0.7rem;
+  margin-left: 2px;
+}
+
+.num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.date {
+  white-space: nowrap;
+}
+
+.description {
+  overflow-wrap: anywhere;
+}
+
+.review td:first-child {
+  box-shadow: inset 3px 0 0 var(--warn);
+}
+
+.transfer td,
+.transfer .categoryButton {
+  color: var(--text-muted);
+}
+
+.income {
+  color: var(--good);
+}
+
+.categoryButton {
+  padding: 0;
+  text-align: left;
+  color: var(--text);
+  text-decoration: underline dotted var(--border-strong);
+  text-underline-offset: 3px;
+}
+
+@media (max-width: 600px) {
+  .hideNarrow {
+    display: none;
+  }
+
+  .table {
+    font-size: 0.82rem;
+  }
+
+  .categoryButton {
+    overflow-wrap: anywhere;
+  }
+
+  .date {
+    white-space: normal;
+  }
+
+  .table td,
+  .sortButton {
+    padding-left: 6px;
+    padding-right: 6px;
+  }
+}

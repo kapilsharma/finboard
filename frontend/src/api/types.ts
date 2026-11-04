@@ -41,6 +41,16 @@ export type ReviewGroups = Schemas['ReviewGroupsOut']
 export type Transfer = Schemas['TransferOut']
 export type TransferStatus = Schemas['TransferStatus']
 export type JobAccepted = Schemas['JobAccepted']
+export type Dashboard = Schemas['DashboardOut']
+export type CategoryLimit = Schemas['CategoryLimitOut']
+export type LimitsSummary = Schemas['LimitsSummaryOut']
+export type IncomeSource = Schemas['IncomeSourceOut']
+export type AccountTotals = Schemas['AccountTotalsOut']
+export type CashflowMonth = Schemas['CashflowMonthOut']
+export type TxnListItem = Schemas['TxnListItem']
+export type TxnList = Schemas['TxnListOut']
+export type Meta = Schemas['MetaOut']
+export type MetricDefinition = Schemas['MetricDefinitionOut']
 
 /** Statuses during which the server is still working on an import. */
 export const IMPORT_IN_FLIGHT: ReadonlySet<ImportStatus> = new Set([

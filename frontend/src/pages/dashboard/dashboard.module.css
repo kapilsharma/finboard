@@ -1,0 +1,268 @@
+.page {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr); /* never wider than the viewport */
+  gap: var(--space-4);
+}
+
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: var(--space-4);
+}
+
+.title {
+  margin: 0 0 var(--space-1);
+}
+
+.takeaway {
+  margin: 0;
+  max-width: 62ch;
+  color: var(--text-muted);
+}
+
+.takeaway b {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.monthSelect select {
+  min-width: 12rem;
+}
+
+.banner {
+  display: block;
+  width: 100%;
+  text-align: left;
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--warn);
+  background: var(--surface);
+  border-radius: var(--radius-sm);
+  padding: var(--space-2) var(--space-3);
+  font-size: 0.9rem;
+}
+
+.stats {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: var(--space-3);
+}
+
+.stat {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: var(--space-4);
+  min-width: 0;
+}
+
+.statLabel {
+  margin: 0 0 var(--space-2);
+  font-size: 0.87rem;
+  font-weight: 400;
+  color: var(--text-muted);
+}
+
+.statValue {
+  margin: 0 0 var(--space-1);
+  font-family: var(--font-serif);
+  font-size: 1.75rem;
+  line-height: 1.2;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+.note {
+  margin: 0 0 var(--space-3);
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
+
+.stat .note {
+  margin: 0;
+}
+
+.good {
+  color: var(--good);
+}
+
+.bad {
+  color: var(--bad);
+}
+
+.muted {
+  color: var(--text-muted);
+}
+
+.summary {
+  margin: 0 0 var(--space-3);
+  font-size: 0.87rem;
+}
+
+.twoUp {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-4);
+  align-items: start;
+}
+
+.bars {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--space-2);
+}
+
+.sourceRow {
+  display: grid;
+  grid-template-columns: minmax(5.5rem, 8.5rem) minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-3);
+  font-size: 0.87rem;
+  padding: 2px 0;
+}
+
+.sourceTrack {
+  position: relative;
+  height: 14px;
+}
+
+.sourceBar {
+  position: absolute;
+  left: 0;
+  top: 0;
+  height: 14px;
+  border-radius: 4px;
+  background: var(--series-income);
+}
+
+.sourcePrev {
+  position: absolute;
+  left: 0;
+  bottom: -4px;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--text-muted);
+}
+
+.num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.rowHead {
+  font-weight: 400;
+  color: var(--text);
+}
+
+.tableWrap {
+  overflow-x: auto;
+}
+
+.cardTitle {
+  margin-bottom: var(--space-2);
+}
+
+.transactions {
+  scroll-margin-top: var(--space-4);
+}
+
+.more {
+  margin-top: var(--space-3);
+}
+
+.stat {
+  position: relative;
+}
+
+.metric {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.info {
+  min-height: auto;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border-radius: 50%;
+  font-size: 0.7rem;
+  line-height: 1;
+  color: var(--text-muted);
+}
+
+.tooltip {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 5;
+  width: max-content;
+  max-width: 260px;
+  padding: var(--space-2) var(--space-3);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  box-shadow: 0 4px 16px rgb(0 0 0 / 0.12);
+  color: var(--text);
+  font-size: 0.8rem;
+  line-height: 1.4;
+  display: none; /* hidden boxes would still widen the page */
+}
+
+.stat:last-child .tooltip {
+  left: auto;
+  right: 0;
+}
+
+.metric:hover .tooltip,
+.info:focus-visible + .tooltip {
+  display: block;
+}
+
+@media (max-width: 1000px) {
+  .stats {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 760px) {
+  .twoUp {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 600px) {
+  .header {
+    flex-direction: column;
+  }
+
+  .stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .statValue {
+    font-size: 1.4rem;
+  }
+
+  .sourceRow {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .tableWrap table {
+    font-size: 0.82rem;
+  }
+
+  .tableWrap th,
+  .tableWrap td {
+    padding-left: 4px;
+    padding-right: 4px;
+  }
+
+  .sourceTrack {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
+}

@@ -1,0 +1,33 @@
+.range {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
+}
+
+.field {
+  display: grid;
+  gap: var(--space-1);
+  font-size: 0.87rem;
+  color: var(--text-muted);
+}
+
+.field select,
+.field input {
+  color: var(--text);
+}
+
+.totals {
+  margin: 0 0 var(--space-3);
+  font-size: 0.87rem;
+  color: var(--text-muted);
+}
+
+.totals b {
+  color: var(--text);
+  font-weight: 500;
+}
+
+.muted {
+  color: var(--text-muted);
+}

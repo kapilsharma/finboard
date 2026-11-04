@@ -1,0 +1,102 @@
+.row {
+  display: grid;
+  grid-template-columns: minmax(5.5rem, 8.5rem) minmax(0, 1fr) 8.5rem; /* tracks line up */
+  align-items: center;
+  gap: var(--space-3);
+  width: 100%;
+  padding: 4px 6px;
+  border: 1px solid transparent;
+  background: none;
+  text-align: left;
+  min-height: auto;
+  font-size: 0.87rem;
+  border-radius: var(--radius-sm);
+}
+
+.row:hover:not(:disabled) {
+  background: var(--surface-muted);
+}
+
+.selected {
+  border-color: var(--border-strong);
+  background: var(--surface-muted);
+}
+
+.label {
+  overflow-wrap: anywhere;
+}
+
+.track {
+  position: relative;
+  height: 14px;
+}
+
+.limit,
+.fill,
+.noLimit {
+  position: absolute;
+  left: 0;
+  top: 0;
+  height: 14px;
+  border-radius: 4px;
+}
+
+.limit {
+  background: var(--surface-muted);
+  outline: 1px solid var(--border);
+}
+
+.noLimit {
+  background: var(--border-strong);
+  opacity: 0.7;
+}
+
+.fillOk {
+  background: var(--good);
+}
+
+.fillOver {
+  background: var(--bad);
+}
+
+.tick {
+  position: absolute;
+  top: -3px;
+  width: 2px;
+  height: 20px;
+  margin-left: -1px;
+  background: var(--text);
+  border-radius: 1px;
+}
+
+.value {
+  display: grid;
+  justify-items: end;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.ok {
+  color: var(--good);
+}
+
+.over {
+  color: var(--bad);
+}
+
+.sub {
+  color: var(--text-muted);
+  font-size: 0.8rem;
+}
+
+@media (max-width: 600px) {
+  .row {
+    grid-template-columns: minmax(0, 1fr) auto;
+    row-gap: 4px;
+  }
+
+  .track {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
+}

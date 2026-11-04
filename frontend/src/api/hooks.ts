@@ -34,6 +34,9 @@ import {
   type Txn,
   type TxnUpdate,
   type JobAccepted,
+  type Dashboard,
+  type Meta,
+  type TxnList,
 } from './types'
 
 export const queryKeys = {
@@ -51,6 +54,12 @@ export const queryKeys = {
   reviewGroups: (month: string | null) => ['review', 'groups', month ?? 'all'] as const,
   transfers: ['transfers'] as const,
   transferList: (status: TransferStatus | null) => ['transfers', status ?? 'all'] as const,
+  meta: ['meta'] as const,
+  dashboard: ['dashboard'] as const,
+  dashboardMonth: (month: string | null) => ['dashboard', 'month', month ?? 'latest'] as const,
+  dashboardMonths: ['dashboard', 'months'] as const,
+  transactions: ['transactions'] as const,
+  transactionList: (params: string) => ['transactions', 'list', params] as const,
 }
 
 /** How often in-flight work is polled. Tests shorten it. */
@@ -276,6 +285,8 @@ export function useParsers() {
 
 /** Everything a categorisation change can affect. */
 function invalidateCategorisation(qc: ReturnType<typeof useQueryClient>) {
+  void qc.invalidateQueries({ queryKey: queryKeys.dashboard })
+  void qc.invalidateQueries({ queryKey: queryKeys.transactions })
   void qc.invalidateQueries({ queryKey: queryKeys.rules })
   void qc.invalidateQueries({ queryKey: queryKeys.review })
   void qc.invalidateQueries({ queryKey: queryKeys.transfers })
@@ -458,4 +469,74 @@ export const useRejectTransfer = () => useTransferAction('reject')
 export function useRefreshAfterJob() {
   const qc = useQueryClient()
   return useCallback(() => invalidateCategorisation(qc), [qc])
+}
+
+// ------------------------------------------------------------------ dashboard (ARCHITECTURE §10)
+
+export function useMeta() {
+  return useQuery({
+    queryKey: queryKeys.meta,
+    queryFn: () => api<Meta>('/meta'),
+    staleTime: Infinity,
+  })
+}
+
+export function useDashboardMonths() {
+  return useQuery({
+    queryKey: queryKeys.dashboardMonths,
+    queryFn: async () => (await api<{ months: string[] }>('/dashboard/months')).months,
+  })
+}
+
+/** `null` data = no transactions yet. The browser revalidates with the ETag (304s are free). */
+export function useDashboard(month: string | null) {
+  return useQuery({
+    queryKey: queryKeys.dashboardMonth(month),
+    queryFn: () => api<Dashboard | null>(`/dashboard${month ? `?month=${month}` : ''}`),
+    placeholderData: (previous) => previous, // keep the old month on screen while switching
+  })
+}
+
+export interface TxnQuery {
+  month?: string | null
+  from?: string | null
+  to?: string | null
+  account?: string | null
+  category?: string | null
+  q?: string | null
+  review?: boolean
+  sort?: string | null
+  order?: 'asc' | 'desc' | null
+}
+
+export function transactionParams(query: TxnQuery, pageSize: number): URLSearchParams {
+  const params = new URLSearchParams()
+  if (query.month) params.set('month', query.month)
+  if (query.from) params.set('from', query.from)
+  if (query.to) params.set('to', query.to)
+  if (query.account) params.set('account_id', query.account)
+  if (query.category) params.set('category_id', query.category)
+  if (query.q?.trim()) params.set('q', query.q.trim())
+  if (query.review) params.set('needs_review', 'true')
+  if (query.sort) params.set('sort', query.sort)
+  if (query.order) params.set('order', query.order)
+  params.set('limit', String(pageSize))
+  return params
+}
+
+/** Transactions, a page at a time (keyset cursor). */
+export function useTransactionList(query: TxnQuery, { pageSize = 100, enabled = true } = {}) {
+  const params = transactionParams(query, pageSize)
+  return useInfiniteQuery({
+    queryKey: queryKeys.transactionList(params.toString()),
+    initialPageParam: null as string | null,
+    queryFn: ({ pageParam }) => {
+      const page = new URLSearchParams(params)
+      if (pageParam) page.set('cursor', pageParam)
+      return api<TxnList>(`/transactions?${page}`)
+    },
+    getNextPageParam: (last) => last.next_cursor,
+    placeholderData: (previous) => previous,
+    enabled,
+  })
 }
