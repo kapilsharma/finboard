@@ -511,7 +511,7 @@ Dashboard responses carry an `ETag` derived from `(user_id, data_version, month)
 
 ## 11. Frontend architecture
 
-**Stack:** React 19, TypeScript 5.9 (pinned: openapi-typescript 7 requires TS 5), Vite 8, React Router 8, TanStack Query 5, TanStack Table 8, d3-scale/shape/array 3, dnd-kit 6, openapi-typescript 7, CSS Modules + CSS variables, Radix primitives where needed ([ADR-0012](adr/0012-charts-d3-react-svg.md), [0013](adr/0013-state-tanstack-query-url.md), [0014](adr/0014-openapi-generated-ts-types.md), [0019](adr/0019-styling-css-modules.md)).
+**Stack:** React 19, TypeScript 5.9 (pinned: openapi-typescript 7 requires TS 5), Vite 8, React Router 8, TanStack Query 5, TanStack Table 8, d3-scale 4, d3-shape/array 3, TanStack Virtual 3, dnd-kit 6, openapi-typescript 7, CSS Modules + CSS variables, Radix primitives where needed ([ADR-0012](adr/0012-charts-d3-react-svg.md), [0013](adr/0013-state-tanstack-query-url.md), [0014](adr/0014-openapi-generated-ts-types.md), [0019](adr/0019-styling-css-modules.md)).
 
 | Path | Page | URL state |
 |---|---|---|
@@ -550,11 +550,13 @@ The formulas and `METRIC_DEFINITIONS` (label, formula text, tooltip) live in **`
 | **Δ net saving / Δ pts** | Difference in money / in percentage points |
 | **Account net** | Income − Spending − Invested for the account |
 | **Category spent / remaining** | Spending for the category and month / Limit − Spent. `over` < 0 ≤ `under`, otherwise `no_limit` |
-| **Limits summary** | Over categories with a limit: Σ spent, Σ limit, left = Σ max(remaining, 0), `over_count` |
+| **Limits summary** | Over categories with a limit: Σ spent, Σ limit, left = Σ limit − Σ spent (negative = over in total; as in the approved mockup, [ADR-0036](adr/0036-dashboard-as-built.md)), `over_count` |
 | **Sort** | `pct_used` desc; `no_limit` last, by spent desc |
 | **Biggest spend / Review count** | Expense category with the largest spent / # txns with `needs_review` in the month |
 
-**Golden test** (`tests/golden`): the sample CSV must give Sep 2026 Income ₹1,42,702.04, Spending ₹96,040.38, Net ₹46,661.66, Rate 32.7 %, Δ net −₹22,330.28, Invested ₹15,000, 2 categories over, review count 2. These figures match the approved mockup.
+Percentages are rounded once, to one decimal place (half up), in `metrics.py`: the API sends what the UI shows ([ADR-0036](adr/0036-dashboard-as-built.md)).
+
+**Golden test** (`tests/integration/golden`): the sample CSV must give Sep 2026 Income ₹1,42,702.04, Spending ₹96,040.38, Net ₹46,661.66, Rate 32.7 %, Δ net −₹22,330.28, Invested ₹15,000, 2 categories over, review count 2. These figures match the approved mockup.
 
 ---
 
@@ -591,7 +593,7 @@ Design target: **hundreds of users, each with up to ~50k transactions** (≈ 25M
 | Redis | Broker, idempotency keys, ephemeral secrets. Small | Disposable; no persistence needed |
 | Blobs | `BlobStore` → S3-compatible when hosted | Keys are namespaced by user |
 
-**Performance budgets** (local, measured in CI on ubuntu): `/dashboard` p95 < 200 ms for a user with 50k txns among 100 users' data. `/transactions` page < 100 ms. Load test (`tests/load`, Locust 2): 200 concurrent virtual users on a dashboard/transactions/categorise mix, p95 < 300 ms on the reference machine. If dashboard SQL ever misses its budget, the first step is a Redis response cache keyed by `data_version` (already in the schema). A materialised `monthly_summary` table is the step after that.
+**Performance budgets** (local, measured in CI on ubuntu): `/dashboard` p95 < 200 ms for a user with 50k txns among 100 users' data. `/transactions` page < 100 ms. Load test (`tests/load`, Locust 2): 200 concurrent virtual users on a dashboard/transactions/categorise mix, p95 < 300 ms on the reference machine. Measured in M4: `/dashboard` p95 87 ms and a `/transactions` page 20 ms for a 50k-txn user among 100 users; the Locust mix gives p95 57 ms with 3 API processes (`finboard serve --workers 3`), and 930 ms with one, which saturates at ~130 req/s ([ADR-0036](adr/0036-dashboard-as-built.md)). If dashboard SQL ever misses its budget, the first step is a Redis response cache keyed by `data_version` (already in the schema). A materialised `monthly_summary` table is the step after that.
 
 ---
 
@@ -609,7 +611,7 @@ Design target: **hundreds of users, each with up to ~50k transactions** (≈ 25M
 | AI (optional) | pytest with a fake/recorded chat model; `finboard ai eval` (manual, live) | suggestion accuracy, SQL guard corpus, privacy canaries, AI tenancy; live execution accuracy → `docs/ai-eval.md` (§18) |
 | Load / perf | Locust 2; pytest `perf` marker | budgets in §14 (perf marker in CI; Locust on demand) |
 | Frontend | Vitest 5, Testing Library, a small `fetch` stub (`mockApi()`; MSW 2 once API mocking grows) | `format.ts`, LimitBar, DeltaBadge, URL-state filters, `useJob` polling, `aria-sort` |
-| E2E | Playwright (`e2e/`) | M2: against `finboard serve` + a worker on `finboard_test` (`e2e/stack.py`): encrypted synthetic PDF → unlock → commit → re-import skipped. From M7, against `docker compose up`: upload encrypted synthetic PDF → unlock → preview reconciles → commit → review + rule → dashboard figures → re-import skipped. axe scan in light and dark |
+| E2E | Playwright (`e2e/`) | M2–M4: against `finboard serve` + a worker on `finboard_test` with the demo data (`e2e/stack.py`): encrypted synthetic PDF → unlock → commit → re-import skipped; dashboard figures, review banner, URL filters across months and reloads, `aria-sort`, axe in light and dark, 400 px. From M7, against `docker compose up`: upload encrypted synthetic PDF → unlock → preview reconciles → commit → review + rule → dashboard figures → re-import skipped. axe scan in light and dark |
 | Static | ruff, mypy, import-linter, oxlint, Prettier 3, `tsc` | |
 
 ```mermaid

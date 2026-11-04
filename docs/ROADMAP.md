@@ -103,19 +103,25 @@ flowchart LR
 | After `fetch-model`, embedding runs with the network blocked | `pytest-socket` in `tests/ai/` |
 | Owner's laptop: 5k txns embedded in < 60 s, worker RSS < 600 MB | `perf` marker (manual run, results in PR) |
 
-## M4 — Dashboard + transactions
+## M4 — Dashboard + transactions ✅ (2026-11-04; owner visual sign-off pending)
+*Done: 412 backend tests (golden Sep 2026, metric edge cases, ETag/304, `/transactions` paging for every sort, tenancy, perf) + 85 frontend tests + 8 Playwright tests (dashboard interactions, axe in light and dark, 400 px, import). `/dashboard` p95 87 ms and a `/transactions` page 20 ms for a 50k-txn user in a 100-user DB. Locust, 200 users: p95 57 ms with 3 API processes (930 ms with one). Deviations ([ADR-0036](adr/0036-dashboard-as-built.md)):*
+- *Limits summary "left" = Σ limit − Σ spent, as in the approved mockup (§12 said Σ max(remaining, 0)).*
+- *Percentages are rounded once, to 1 place, on the server (double rounding gave −11.2 % instead of the mockup's −11.3 %).*
+- *Golden, perf and ETag tests live under `tests/integration/`; e2e runs against `finboard serve` with the demo data (`e2e/stack.py`).*
+- *`finboard serve --workers N` added for the load budget; the default stays 1.*
+
 **Scope:** `domain/metrics.py` + definitions, budgets backend, `/dashboard` (+ ETag via `data_version`), `/transactions` (keyset paging, trigram search), `format.ts`, every mockup section, Transactions page, review banner, inline re-categorise, 400 px layout, light/dark, a11y.
 
 | Acceptance criterion | Proven by |
 |---|---|
-| Golden: Sep 2026 Income ₹1,42,702.04, Spending ₹96,040.38, Net ₹46,661.66, Rate 32.7 %, Δ net −₹22,330.28, 2 over, review 2 | `tests/golden/test_dashboard_golden.py` |
+| Golden: Sep 2026 Income ₹1,42,702.04, Spending ₹96,040.38, Net ₹46,661.66, Rate 32.7 %, Δ net −₹22,330.28, 2 over, review 2 | `tests/integration/golden/test_dashboard_golden.py` |
 | Metric edge cases (zero income, no prev month, refunds per ADR-0017) | `tests/unit/test_metrics.py` |
-| `/dashboard` p95 < 200 ms for a 50k-txn user in a 100-user DB. Unchanged data → 304 | `tests/perf/test_dashboard_perf.py`, `tests/integration/test_etag.py` |
-| Load: 200 virtual users, p95 < 300 ms | `tests/load/locustfile.py` (manual run, results in PR) |
-| `₹50K / ₹1L / ₹1.5L / ₹2Cr`. `₹94 over` with no minus | Vitest `format.test.ts`, `LimitBar.test.tsx` |
-| Filters persist across months and reloads (URL). Category click filters. Banner → review | Vitest + Playwright `dashboard.spec.ts` |
-| `aria-sort`, text not colour-only, axe clean in light and dark, no horizontal scroll at 400 px | Playwright |
-| Owner signs off visual parity with `docs/handover/design/dashboard-mockup.png` | screenshot review |
+| `/dashboard` p95 < 200 ms for a 50k-txn user in a 100-user DB. Unchanged data → 304 | `tests/integration/perf/test_dashboard_perf.py`, `tests/integration/test_etag.py` |
+| Load: 200 virtual users, p95 < 300 ms | `backend/tests/load/locustfile.py` (manual run: p95 57 ms with 3 API processes) |
+| `₹50K / ₹1L / ₹1.5L / ₹2Cr`. `₹94 over` with no minus | Vitest `format.dashboard.test.ts`, `LimitBar.test.tsx` |
+| Filters persist across months and reloads (URL). Category click filters. Banner → review | Vitest `DashboardPage.test.tsx` + Playwright `e2e/tests/dashboard.spec.ts` |
+| `aria-sort`, text not colour-only, axe clean in light and dark, no horizontal scroll at 400 px | Playwright `dashboard.spec.ts`; Vitest `DeltaBadge.test.tsx` |
+| Owner signs off visual parity with `docs/handover/design/dashboard-mockup.png` | screenshot review (**pending**: light, dark and 400 px screenshots in the PR) |
 
 ## M4a — Ask Finboard (after M4)
 *Natural-language questions → chart, with pinning to the dashboard ([ADR-0032](adr/0032-nl-analytics-langgraph.md)). Off by default. The LLM never sees transaction data ([ADR-0030](adr/0030-assistive-ai-opt-in.md)).*
