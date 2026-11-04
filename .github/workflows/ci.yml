@@ -114,11 +114,11 @@ jobs:
       - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3 (no moving major tags since v8; pin by SHA)
         with:
           enable-cache: true
-      - name: Pure tests (no database) — parsers will join here in M2
+      - name: Pure tests and the parser contract suite (no database)
         working-directory: backend
         run: |
           uv sync --locked
-          uv run pytest tests/unit
+          uv run pytest tests/unit tests/parsers
 
   frontend:
     name: Frontend (${{ matrix.os }})
@@ -139,3 +139,68 @@ jobs:
           npm ci
           npm test
           npm run build
+
+  e2e:
+    name: End-to-end (Playwright)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_PASSWORD: postgres_dev
+        ports: ["55432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 2s --health-timeout 3s
+          --health-retries 30
+      redis:
+        image: redis:7-alpine
+        ports: ["56379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping" --health-interval 2s --health-timeout 3s
+          --health-retries 30
+    env:
+      UV_PYTHON: "3.12"
+    steps:
+      - uses: actions/checkout@v5
+      - name: Create roles and databases (same script as the dev compose stack)
+        env:
+          PGHOST: 127.0.0.1
+          PGPORT: "55432"
+          PGPASSWORD: postgres_dev
+          POSTGRES_USER: postgres
+          FINBOARD_OWNER_PASSWORD: finboard_owner_dev
+          FINBOARD_APP_PASSWORD: finboard_app_dev
+        run: sh deploy/postgres/init/01-finboard.sh
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3 (no moving major tags since v8; pin by SHA)
+        with:
+          enable-cache: true
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: |
+            frontend/package-lock.json
+            e2e/package-lock.json
+      - name: Backend install
+        working-directory: backend
+        run: uv sync --locked
+      - name: Build the SPA
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run build
+      - name: Playwright
+        working-directory: e2e
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+          npx playwright test
+      - name: Upload the report on failure
+        if: failure()
+        uses: actions/upload-artifact@v5
+        with:
+          name: playwright-report
+          path: |
+            e2e/playwright-report/
+            e2e/test-results/
+          retention-days: 7

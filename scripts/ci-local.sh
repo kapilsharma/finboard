@@ -2,14 +2,17 @@
 # Run the same checks as GitHub Actions (.github/workflows/ci.yml) locally.
 # Keep the two in sync: a step added there belongs here too.
 #
-#   scripts/ci-local.sh              everything (as CI does)
-#   scripts/ci-local.sh --fast       skip dependency installs and the production build
+#   scripts/ci-local.sh              everything (as CI does), including the Playwright e2e
+#   scripts/ci-local.sh --fast       skip dependency installs, the production build and e2e
 #   scripts/ci-local.sh --backend    backend only        (combine with --fast)
 #   scripts/ci-local.sh --frontend   frontend only + generated API types check
+#   scripts/ci-local.sh --no-e2e     everything except the Playwright e2e
 #
 # Integration tests need Postgres 18 on 127.0.0.1:55432 and Redis on 127.0.0.1:56379:
 #   docker compose -f deploy/compose.dev.yaml up -d      (with Docker)
 #   bash scripts/setup-native-services.sh                (Debian/Ubuntu, without Docker)
+# The e2e step needs a Playwright Chromium once: (cd e2e && npx playwright install chromium),
+# or E2E_CHROMIUM_PATH=/path/to/chrome to use one that is already installed.
 # Exit code is non-zero if any step fails; it stops at the first failure.
 set -uo pipefail
 
@@ -17,13 +20,15 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 FAST=0
 BACKEND=1
 FRONTEND=1
+E2E=1
 
 for arg in "$@"; do
   case "$arg" in
     --fast) FAST=1 ;;
     --backend) FRONTEND=0 ;;
     --frontend) BACKEND=0 ;;
-    -h | --help) sed -n '2,13p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    --no-e2e) E2E=0 ;;
+    -h | --help) sed -n '2,16p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) echo "unknown option: $arg (see --help)" >&2; exit 2 ;;
   esac
 done
@@ -113,6 +118,14 @@ if [ "$FRONTEND" = 1 ]; then
   [ "$FAST" = 1 ] || step "Frontend: production build" in_frontend npm run --silent build
   # (job: lint, "Generated API types are up to date") needs the backend too.
   step "Generated API types are up to date" api_types_current
+fi
+
+# --- end-to-end (job: e2e). Needs both halves, the built SPA and the services.
+if [ "$BACKEND" = 1 ] && [ "$FRONTEND" = 1 ] && [ "$FAST" = 0 ] && [ "$E2E" = 1 ]; then
+  in_e2e() { (cd "$ROOT/e2e" && "$@"); }
+  step "E2E: install (npm ci)" in_e2e npm ci --no-audit --no-fund
+  step "E2E: Postgres + Redis reachable" services_up
+  step "E2E: Playwright" in_e2e npx playwright test
 fi
 
 printf '\n\033[32mAll checks passed\033[0m in %ss:\n' "$(( $(date +%s) - STARTED ))"
