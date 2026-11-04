@@ -1,7 +1,8 @@
 /** Server state lives only in TanStack Query (ADR-0013). One hook per endpoint. */
 
+import { useCallback } from 'react'
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { api } from './client'
+import { API_BASE, api } from './client'
 import {
   IMPORT_IN_FLIGHT,
   type Account,
@@ -19,6 +20,20 @@ import {
   type ParserList,
   type Preferences,
   type ReparseBody,
+  type ReviewGroups,
+  type Rule,
+  type RuleApplyBody,
+  type RuleCreate,
+  type RulePackImportResult,
+  type RuleTest,
+  type RuleTestBody,
+  type RuleUpdate,
+  type SuggestRule,
+  type Transfer,
+  type TransferStatus,
+  type Txn,
+  type TxnUpdate,
+  type JobAccepted,
 } from './types'
 
 export const queryKeys = {
@@ -31,6 +46,11 @@ export const queryKeys = {
   importList: (statuses: readonly ImportStatus[]) => ['imports', 'list', ...statuses] as const,
   import: (id: string) => ['imports', 'one', id] as const,
   parsers: ['parsers'] as const,
+  rules: ['rules'] as const,
+  review: ['review'] as const,
+  reviewGroups: (month: string | null) => ['review', 'groups', month ?? 'all'] as const,
+  transfers: ['transfers'] as const,
+  transferList: (status: TransferStatus | null) => ['transfers', status ?? 'all'] as const,
 }
 
 /** How often in-flight work is polled. Tests shorten it. */
@@ -250,4 +270,192 @@ export function useRollbackImport() {
 
 export function useParsers() {
   return useQuery({ queryKey: queryKeys.parsers, queryFn: () => api<ParserList>('/parsers') })
+}
+
+// ------------------------------------------------------------------ rules (ARCHITECTURE §9)
+
+/** Everything a categorisation change can affect. */
+function invalidateCategorisation(qc: ReturnType<typeof useQueryClient>) {
+  void qc.invalidateQueries({ queryKey: queryKeys.rules })
+  void qc.invalidateQueries({ queryKey: queryKeys.review })
+  void qc.invalidateQueries({ queryKey: queryKeys.transfers })
+}
+
+export function useRules() {
+  return useQuery({
+    queryKey: queryKeys.rules,
+    queryFn: async () => (await api<{ items: Rule[] }>('/rules')).items,
+  })
+}
+
+export function useCreateRule() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (body: RuleCreate) => api<Rule>('/rules', { method: 'POST', body }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.rules }),
+  })
+}
+
+export function useUpdateRule() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, changes }: { id: string; changes: RuleUpdate }) =>
+      api<Rule>(`/rules/${id}`, { method: 'PATCH', body: changes }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.rules }),
+  })
+}
+
+export function useDeleteRule() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: string) => api<void>(`/rules/${id}`, { method: 'DELETE' }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.rules }),
+  })
+}
+
+/** Optimistic: the list shows the new order at once and rolls back if the server refuses. */
+export function useReorderRules() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (ids: string[]) =>
+      api<{ items: Rule[] }>('/rules/reorder', { method: 'POST', body: { ids } }),
+    onMutate: async (ids) => {
+      await qc.cancelQueries({ queryKey: queryKeys.rules })
+      const previous = qc.getQueryData<Rule[]>(queryKeys.rules)
+      if (previous) {
+        const byId = new Map(previous.map((r) => [r.id, r]))
+        qc.setQueryData(
+          queryKeys.rules,
+          ids.map((id) => byId.get(id)).filter((r): r is Rule => r !== undefined),
+        )
+      }
+      return { previous }
+    },
+    onError: (_error, _ids, context) => {
+      if (context?.previous) qc.setQueryData(queryKeys.rules, context.previous)
+    },
+    onSuccess: (result) => qc.setQueryData(queryKeys.rules, result.items),
+  })
+}
+
+/** Dry-run a rule against committed transactions (changes nothing). */
+export function useTestRule(body: RuleTestBody | null) {
+  return useQuery({
+    queryKey: ['rules', 'test', body] as const,
+    queryFn: () => api<RuleTest>('/rules/test', { method: 'POST', body }),
+    enabled: body !== null && body.pattern.trim() !== '',
+    staleTime: 10_000,
+    retry: false,
+  })
+}
+
+export function useApplyRules() {
+  return useMutation({
+    mutationFn: (body: RuleApplyBody) => api<JobAccepted>('/rules/apply', { method: 'POST', body }),
+  })
+}
+
+export function useImportRules() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (body: { content: string; mode: 'merge' | 'replace' }) =>
+      api<RulePackImportResult>('/rules/import', { method: 'POST', body }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: queryKeys.rules })
+      void qc.invalidateQueries({ queryKey: queryKeys.categories }) // may have created some
+    },
+  })
+}
+
+export function useAddStarterRules() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: () => api<RulePackImportResult>('/rules/starter-pack', { method: 'POST' }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.rules }),
+  })
+}
+
+/** Download the rule pack as a file (the browser saves it; nothing leaves the machine). */
+export async function downloadRulePack(format: 'yaml' | 'json') {
+  const response = await fetch(`${API_BASE}/rules/export?format=${format}`)
+  if (!response.ok) throw new Error('Export failed')
+  const blob = await response.blob()
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = `finboard-rules.${format}`
+  link.click()
+  URL.revokeObjectURL(url)
+}
+
+// ------------------------------------------------------------------ review and transactions
+
+export function useReviewGroups(month: string | null) {
+  return useQuery({
+    queryKey: queryKeys.reviewGroups(month),
+    queryFn: () => api<ReviewGroups>(`/review/groups${month ? `?month=${month}` : ''}`),
+  })
+}
+
+export function useSuggestRule(transactionId: string | null) {
+  return useQuery({
+    queryKey: ['review', 'suggest', transactionId] as const,
+    queryFn: () =>
+      api<SuggestRule>('/review/suggest-rule', {
+        method: 'POST',
+        body: { transaction_id: transactionId },
+      }),
+    enabled: transactionId !== null,
+  })
+}
+
+export function useUpdateTransaction() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, changes }: { id: string; changes: TxnUpdate }) =>
+      api<Txn>(`/transactions/${id}`, { method: 'PATCH', body: changes }),
+    onSuccess: () => invalidateCategorisation(qc),
+  })
+}
+
+export function useBulkCategorise() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (body: { ids: string[]; category_id: string }) =>
+      api<{ updated: number }>('/transactions/bulk', { method: 'POST', body }),
+    onSuccess: () => invalidateCategorisation(qc),
+  })
+}
+
+// ------------------------------------------------------------------ transfers
+
+export function useTransfers(status: TransferStatus | null) {
+  return useQuery({
+    queryKey: queryKeys.transferList(status),
+    queryFn: async () =>
+      (await api<{ items: Transfer[] }>(`/transfers${status ? `?status=${status}` : ''}`)).items,
+  })
+}
+
+export function useSuggestTransfers() {
+  return useMutation({
+    mutationFn: () => api<JobAccepted>('/transfers/suggest', { method: 'POST' }),
+  })
+}
+
+function useTransferAction(action: 'confirm' | 'reject') {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: string) => api<Transfer>(`/transfers/${id}/${action}`, { method: 'POST' }),
+    onSuccess: () => invalidateCategorisation(qc),
+  })
+}
+
+export const useConfirmTransfer = () => useTransferAction('confirm')
+export const useRejectTransfer = () => useTransferAction('reject')
+
+/** Invalidate whatever a finished background job may have changed. */
+export function useRefreshAfterJob() {
+  const qc = useQueryClient()
+  return useCallback(() => invalidateCategorisation(qc), [qc])
 }

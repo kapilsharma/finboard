@@ -20,8 +20,11 @@ def test_swiggy_upi_suggests_contains_swiggy() -> None:
         ("POS 4111XXXXXXXX1234 AMAZON IN", "AMAZON"),
         ("UPI-ZOMATO-ZOMATO.ORDER@ICICI-ICIC0DC0099-612345678901-UPI", "ZOMATO"),
         ("BIL/ONL/000123456789/AIRTEL/Bill", "AIRTEL"),
-        ("NEFT-HDFCN52026091234567-ACME CORP-SALARY SEP", "SALARY"),
-        ("VPS*XXXX-4321*HPCL PETROL PUMP", "PETROL"),
+        ("NEFT-HDFCN52026091234567-ACME CORP-SALARY SEP", "ACME"),
+        ("VPS*XXXX-4321*HPCL PETROL PUMP", "HPCL"),
+        ("RELIANCE FRESH BANGALORE IN", "RELIANCE"),
+        ("IMPS/975288200182/REFUND/APOLLO PHARMACY", "APOLLO"),
+        ("REFUND UBER INDIA", "UBER"),
     ],
 )
 def test_suggestions(raw: str, pattern: str) -> None:
@@ -38,8 +41,9 @@ def test_nothing_usable() -> None:
     assert group_key("") is None
 
 
-def test_ties_keep_the_first_token() -> None:
-    assert group_key("UPI ALPHA OMEGA") == "ALPHA"
+def test_the_first_merchant_token_wins_over_a_longer_later_one() -> None:
+    assert group_key("UPI KFC KORAMANGALA") == "KFC"
+    assert suggest_rule(normalise("PAYMENT RECEIVED - THANK YOU")) is None
 
 
 def test_the_suggestion_matches_its_own_transaction() -> None:

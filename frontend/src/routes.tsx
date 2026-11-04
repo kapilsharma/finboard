@@ -2,7 +2,8 @@ import { Navigate, type RouteObject } from 'react-router'
 import { AppLayout } from './components/AppLayout'
 import { ImportDetailPage } from './pages/import/ImportDetailPage'
 import { ImportPage } from './pages/import/ImportPage'
-import { DashboardPage, NotFoundPage, ReviewPage, TransactionsPage } from './pages/placeholders'
+import { DashboardPage, NotFoundPage, TransactionsPage } from './pages/placeholders'
+import { ReviewPage } from './pages/review/ReviewPage'
 import { SettingsPage } from './pages/settings/SettingsPage'
 
 export const routes: RouteObject[] = [

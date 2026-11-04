@@ -5,13 +5,15 @@ import { CategoriesTab } from './CategoriesTab'
 import { ImportHistoryTab } from './ImportHistoryTab'
 import { ParsersTab } from './ParsersTab'
 import { PreferencesTab } from './PreferencesTab'
+import { RulesTab } from './rules/RulesTab'
 import { SystemTab } from './SystemTab'
 import styles from './settings.module.css'
 
-// Rules, Budgets and Data join in later milestones.
+// Budgets and Data join in later milestones.
 const TABS = [
   { id: 'accounts', label: 'Accounts', element: <AccountsTab /> },
   { id: 'categories', label: 'Categories', element: <CategoriesTab /> },
+  { id: 'rules', label: 'Rules', element: <RulesTab /> },
   { id: 'parsers', label: 'Parsers', element: <ParsersTab /> },
   { id: 'imports', label: 'Import history', element: <ImportHistoryTab /> },
   { id: 'preferences', label: 'Preferences', element: <PreferencesTab /> },
