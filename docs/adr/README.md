@@ -40,3 +40,4 @@ Status values: **Accepted (given)** = fixed by HANDOVER §2 · **Accepted** · *
 | [0033](0033-fallback-parsers-and-fixture-discovery.md) | Fallback parsers; fixture builders via entry points | Accepted |
 | [0034](0034-parse-cap-and-hard-kill.md) | Per-user parse cap; recording hard-killed parses | Accepted |
 | [0035](0035-categorisation-as-built.md) | Categorisation as built (M3) | Accepted |
+| [0036](0036-dashboard-as-built.md) | Dashboard and transactions as built (M4) | Accepted |

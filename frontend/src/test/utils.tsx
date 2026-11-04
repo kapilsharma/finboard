@@ -25,7 +25,10 @@ export function mockApi(handlers: Record<string, Handler>) {
     }
     const result = handler({ method, body })
     const status = result.status ?? 200
-    return new Response(status === 204 ? null : JSON.stringify(result.body ?? {}), { status })
+    return new Response(
+      status === 204 ? null : JSON.stringify('body' in result ? result.body : {}),
+      { status },
+    )
   })
   vi.stubGlobal('fetch', fetchMock)
   return calls

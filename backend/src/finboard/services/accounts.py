@@ -60,6 +60,7 @@ class AccountService:
             await self._ensure_name_free(changes["name"], exclude_id=account.id)
         for field, value in changes.items():
             setattr(account, field, value)
+        await self.uow.users.bump_data_version(self.uow.user_id)  # names show on the dashboard
         await self.uow.session.flush()
         await self.uow.commit()
         return account

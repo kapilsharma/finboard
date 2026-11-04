@@ -404,6 +404,26 @@ Index(
 Index("ix_transfer_pair_user_status", TransferPair.user_id, TransferPair.status)
 
 
+class Budget(UUIDPrimaryKey, UserOwned, Timestamps, Base):
+    """A category's monthly limit from `effective_from` (1st of a month) until the next row.
+    For month M the row with the greatest effective_from <= M applies; a NULL limit means
+    "no limit from then on" (ARCHITECTURE §5)."""
+
+    __tablename__ = "budget"
+
+    category_id: Mapped[uuid.UUID]
+    effective_from: Mapped[dt.date]
+    monthly_limit: Mapped[Decimal | None] = mapped_column(Money)
+
+    __table_args__ = (
+        UniqueConstraint("user_id", "id"),
+        UniqueConstraint("user_id", "category_id", "effective_from"),
+        _user_fk("category_id", "category", ondelete="CASCADE"),
+        CheckConstraint("extract(day from effective_from) = 1", name="first_of_month"),
+        CheckConstraint("monthly_limit IS NULL OR monthly_limit >= 0", name="limit_not_negative"),
+    )
+
+
 class UserSetting(Base):
     __tablename__ = "user_setting"
 
@@ -427,4 +447,5 @@ USER_OWNED_TABLES = (
     "import_row",
     "rule",
     "transfer_pair",
+    "budget",
 )

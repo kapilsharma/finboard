@@ -49,6 +49,8 @@ dev = [
     "types-pyyaml>=6.0.12.20261103",
     "types-regex>=2026.9.29.20261030",
 ]
+# Manual load test (tests/load): `uv run --group load locust ...`. Not installed by default.
+load = ["locust>=2.32"]
 
 [build-system]
 requires = ["hatchling>=1.25"]
@@ -71,6 +73,8 @@ ignore = ["S101"]  # assert is fine in tests and type narrowing
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["S105", "S106", "S608", "E501"]
 "src/finboard/db/migrations/**" = ["S608"]
+# User-facing formulas use real minus and multiplication signs (shown verbatim as tooltips).
+"src/finboard/domain/metrics.py" = ["RUF001", "RUF002", "RUF003"]
 
 [tool.mypy]
 python_version = "3.12"

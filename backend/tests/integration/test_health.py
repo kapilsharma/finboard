@@ -17,7 +17,13 @@ async def test_ready_checks_database_and_redis(client: httpx.AsyncClient) -> Non
 
 async def test_meta(client: httpx.AsyncClient) -> None:
     response = await client.get("/api/v1/meta")
-    assert response.json() == {"version": __version__, "api_version": "v1", "mode": "local"}
+    body = response.json()
+    assert {k: body[k] for k in ("version", "api_version", "mode")} == {
+        "version": __version__,
+        "api_version": "v1",
+        "mode": "local",
+    }
+    assert "savings_rate" in body["metric_definitions"]
 
 
 async def test_me_returns_the_authenticated_user(client: httpx.AsyncClient) -> None:

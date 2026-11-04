@@ -182,10 +182,19 @@ class MeOut(BaseModel):
     mode: str
 
 
+class MetricDefinitionOut(BaseModel):
+    label: str
+    formula: str
+    tooltip: str
+
+
 class MetaOut(BaseModel):
     version: str
     api_version: str
     mode: str
+    metric_definitions: dict[str, MetricDefinitionOut] = Field(
+        description="The metric spec (ARCHITECTURE §12); the UI shows these as tooltips"
+    )
 
 
 class Preferences(BaseModel):
@@ -588,3 +597,146 @@ class TransferOut(BaseModel):
 
 class TransferList(BaseModel):
     items: list[TransferOut]
+
+
+# ---------------------------------------------------------------- dashboard (§10, §12)
+
+MonthStr = Annotated[str, Field(pattern=r"^\d{4}-(0[1-9]|1[0-2])$", examples=["2026-09"])]
+Pct = Annotated[float, Field(description="Percent, rounded to 1 place")]
+
+
+class CategoryRef(BaseModel):
+    id: uuid.UUID
+    name: str
+    type: CategoryType
+    colour: str | None
+
+
+class MoneyWithChange(BaseModel):
+    value: Money
+    prev: Money | None
+    delta_pct: Pct | None
+
+
+class NetSavingHeadline(BaseModel):
+    value: Money
+    prev: Money | None
+    delta: Money | None
+
+
+class RateHeadline(BaseModel):
+    value: Pct | None
+    prev: Pct | None
+    delta_pts: Pct | None
+
+
+class InvestedHeadline(BaseModel):
+    value: Money
+    pct_of_net_saving: Pct | None
+
+
+class Headline(BaseModel):
+    income: MoneyWithChange
+    spending: MoneyWithChange
+    net_saving: NetSavingHeadline
+    savings_rate: RateHeadline
+    invested: InvestedHeadline
+
+
+class BiggestSpend(BaseModel):
+    category: CategoryRef
+    amount: Money
+
+
+class CashflowMonthOut(BaseModel):
+    month: MonthStr
+    income: Money
+    spending: Money
+    net_saving: Money
+    invested: Money
+
+
+class LimitsSummaryOut(BaseModel):
+    spent_in_limits: Money
+    limits_total: Money
+    left: Money = Field(description="Σ limit - Σ spent; negative when over in total")
+    over_count: int
+
+
+class CategoryLimitOut(BaseModel):
+    category: CategoryRef
+    spent: Money
+    limit: Money | None
+    remaining: Money | None
+    pct_used: Pct | None
+    status: Literal["under", "over", "no_limit"]
+
+
+class CategoriesOut(BaseModel):
+    summary: LimitsSummaryOut | None
+    items: list[CategoryLimitOut]
+
+
+class IncomeSourceOut(BaseModel):
+    category: CategoryRef
+    amount: Money
+    prev_amount: Money | None
+
+
+class AccountTotalsOut(BaseModel):
+    account: AccountRef
+    income: Money
+    spending: Money
+    invested: Money
+    net: Money
+
+
+class DashboardOut(BaseModel):
+    month: MonthStr
+    prev_month: MonthStr | None
+    headline: Headline
+    biggest_spend: BiggestSpend | None
+    review_count: int
+    cashflow: list[CashflowMonthOut]
+    categories: CategoriesOut
+    income_sources: list[IncomeSourceOut]
+    accounts: list[AccountTotalsOut]
+
+
+class DashboardMonths(BaseModel):
+    months: list[MonthStr] = Field(description="Months with transactions, newest first")
+
+
+class BudgetOut(OutputModel):
+    category_id: uuid.UUID
+    effective_from: dt.date
+    monthly_limit: Money | None
+
+
+class BudgetList(BaseModel):
+    month: MonthStr
+    items: list[BudgetOut]
+
+
+class BudgetPut(InputModel):
+    effective_from: MonthStr = Field(description="The month the limit starts in")
+    monthly_limit: MoneyIn | None = Field(description="null = no limit from this month on")
+
+
+class TxnListItem(TxnOut):
+    account_name: str
+    category_name: str
+
+
+class TxnSums(BaseModel):
+    income: Money
+    spending: Money
+    invested: Money
+    transfers: Money
+
+
+class TxnListOut(BaseModel):
+    items: list[TxnListItem]
+    next_cursor: str | None
+    total: int
+    sums: TxnSums

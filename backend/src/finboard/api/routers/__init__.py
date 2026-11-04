@@ -2,7 +2,9 @@ from fastapi import APIRouter
 
 from finboard.api.routers import (
     accounts,
+    budgets,
     categories,
+    dashboard,
     health,
     imports,
     jobs,
@@ -29,5 +31,7 @@ for module in (
     review,
     transfers,
     rules,
+    dashboard,
+    budgets,
 ):
     api_router.include_router(module.router)
