@@ -51,6 +51,9 @@ export type TxnListItem = Schemas['TxnListItem']
 export type TxnList = Schemas['TxnListOut']
 export type Meta = Schemas['MetaOut']
 export type MetricDefinition = Schemas['MetricDefinitionOut']
+export type Budget = Schemas['BudgetOut']
+export type CategoryMergeResult = Schemas['CategoryMergeOut']
+export type ParserSettingUpdate = Schemas['ParserSettingUpdate']
 
 /** Statuses during which the server is still working on an import. */
 export const IMPORT_IN_FLIGHT: ReadonlySet<ImportStatus> = new Set([

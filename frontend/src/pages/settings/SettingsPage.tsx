@@ -6,23 +6,25 @@ import { ImportHistoryTab } from './ImportHistoryTab'
 import { ParsersTab } from './ParsersTab'
 import { PreferencesTab } from './PreferencesTab'
 import { RulesTab } from './rules/RulesTab'
-import { SystemTab } from './SystemTab'
+import { BudgetsTab } from './BudgetsTab'
+import { DataTab } from './DataTab'
 import styles from './settings.module.css'
 
-// Budgets and Data join in later milestones.
 const TABS = [
   { id: 'accounts', label: 'Accounts', element: <AccountsTab /> },
   { id: 'categories', label: 'Categories', element: <CategoriesTab /> },
   { id: 'rules', label: 'Rules', element: <RulesTab /> },
+  { id: 'budgets', label: 'Budgets', element: <BudgetsTab /> },
   { id: 'parsers', label: 'Parsers', element: <ParsersTab /> },
   { id: 'imports', label: 'Import history', element: <ImportHistoryTab /> },
   { id: 'preferences', label: 'Preferences', element: <PreferencesTab /> },
-  { id: 'system', label: 'System', element: <SystemTab /> },
+  { id: 'data', label: 'Data', element: <DataTab /> },
 ] as const
 
 export function SettingsPage() {
   const { tab } = useParams()
-  const current = TABS.find((t) => t.id === tab)
+  // "System" became part of Data (M5): keep old links working.
+  const current = TABS.find((t) => t.id === (tab === 'system' ? 'data' : tab))
   if (!current) return <Navigate to="/settings/accounts" replace />
 
   return (

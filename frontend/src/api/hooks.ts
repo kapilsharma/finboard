@@ -37,6 +37,10 @@ import {
   type Dashboard,
   type Meta,
   type TxnList,
+  type Budget,
+  type CategoryMergeResult,
+  type Parser,
+  type ParserSettingUpdate,
 } from './types'
 
 export const queryKeys = {
@@ -60,6 +64,7 @@ export const queryKeys = {
   dashboardMonths: ['dashboard', 'months'] as const,
   transactions: ['transactions'] as const,
   transactionList: (params: string) => ['transactions', 'list', params] as const,
+  budgets: ['budgets'] as const,
 }
 
 /** How often in-flight work is polled. Tests shorten it. */
@@ -539,4 +544,92 @@ export function useTransactionList(query: TxnQuery, { pageSize = 100, enabled = 
     placeholderData: (previous) => previous,
     enabled,
   })
+}
+
+// ------------------------------------------------------------------ settings (M5)
+
+export function useBudgetHistory() {
+  return useQuery({
+    queryKey: queryKeys.budgets,
+    queryFn: async () => (await api<{ items: Budget[] }>('/budgets/history')).items,
+  })
+}
+
+function useBudgetMutation<V>(request: (vars: V) => Promise<unknown>) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: request,
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: queryKeys.budgets })
+      void qc.invalidateQueries({ queryKey: queryKeys.dashboard })
+    },
+  })
+}
+
+export function usePutBudget() {
+  return useBudgetMutation(
+    ({ categoryId, month, limit }: { categoryId: string; month: string; limit: string | null }) =>
+      api<Budget>(`/budgets/${categoryId}`, {
+        method: 'PUT',
+        body: { effective_from: month, monthly_limit: limit },
+      }),
+  )
+}
+
+export function useDeleteBudgetChange() {
+  return useBudgetMutation(({ categoryId, month }: { categoryId: string; month: string }) =>
+    api<void>(`/budgets/${categoryId}/${month}`, { method: 'DELETE' }),
+  )
+}
+
+export function useMergeCategory() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, intoId }: { id: string; intoId: string }) =>
+      api<CategoryMergeResult>(`/categories/${id}/merge`, {
+        method: 'POST',
+        body: { into_id: intoId },
+      }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: queryKeys.categories })
+      void qc.invalidateQueries({ queryKey: queryKeys.budgets })
+      invalidateCategorisation(qc)
+    },
+  })
+}
+
+export function useUpdateParser() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, changes }: { id: string; changes: ParserSettingUpdate }) =>
+      api<Parser>(`/parsers/${id}`, { method: 'PATCH', body: changes }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.parsers }),
+  })
+}
+
+export function useStartExport() {
+  return useMutation({ mutationFn: () => api<JobAccepted>('/data/export', { method: 'POST' }) })
+}
+
+export function useStartDataImport() {
+  return useMutation({
+    mutationFn: (file: File) => {
+      const form = new FormData()
+      form.append('file', file, file.name)
+      return api<JobAccepted>('/data/import', { method: 'POST', form })
+    },
+  })
+}
+
+export function useDeleteAll() {
+  return useMutation({
+    mutationFn: (confirm: string) =>
+      api<JobAccepted>('/data/delete-all', { method: 'POST', body: { confirm } }),
+  })
+}
+
+/** After an import or delete-all, everything the user sees may have changed. */
+export function useRefreshEverything() {
+  const qc = useQueryClient()
+  return useCallback(() => void qc.invalidateQueries(), [qc])
 }
