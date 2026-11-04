@@ -15,7 +15,9 @@ from finboard.db.uow import UnitOfWork, unit_of_work
 from finboard.domain.errors import Unauthenticated
 from finboard.parsers.registry import ParserRegistry
 from finboard.services.accounts import AccountService
+from finboard.services.budgets import BudgetService
 from finboard.services.categories import CategoryService
+from finboard.services.dashboard import DashboardService
 from finboard.services.imports import ImportLimits, ImportService
 from finboard.services.jobs import JobQueue, JobService
 from finboard.services.review import ReviewService
@@ -109,7 +111,17 @@ def get_transaction_service(uow: UowDep, queue: QueueDep) -> TransactionService:
     return TransactionService(uow, queue)
 
 
+def get_dashboard_service(uow: UowDep) -> DashboardService:
+    return DashboardService(uow)
+
+
+def get_budget_service(uow: UowDep) -> BudgetService:
+    return BudgetService(uow)
+
+
 SettingsDep = Annotated[Settings, Depends(get_settings)]
+DashboardServiceDep = Annotated[DashboardService, Depends(get_dashboard_service)]
+BudgetServiceDep = Annotated[BudgetService, Depends(get_budget_service)]
 RuleServiceDep = Annotated[RuleService, Depends(get_rule_service)]
 ReviewServiceDep = Annotated[ReviewService, Depends(get_review_service)]
 TransferServiceDep = Annotated[TransferService, Depends(get_transfer_service)]

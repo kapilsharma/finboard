@@ -391,6 +391,28 @@ export interface paths {
     patch?: never
     trace?: never
   }
+  '/api/v1/transactions': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /**
+     * List Transactions
+     * @description Transactions in a month (`month`) or a date range (`from`, `to`), filtered and sorted,
+     *     a page at a time: pass `next_cursor` back as `cursor`. `total` and `sums` cover every
+     *     matching row, not just the page.
+     */
+    get: operations['list_transactions_api_v1_transactions_get']
+    put?: never
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
   '/api/v1/transactions/{txn_id}': {
     parameters: {
       query?: never
@@ -734,6 +756,85 @@ export interface paths {
     patch: operations['update_rule_api_v1_rules__rule_id__patch']
     trace?: never
   }
+  '/api/v1/dashboard/months': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** Dashboard Months */
+    get: operations['dashboard_months_api_v1_dashboard_months_get']
+    put?: never
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/api/v1/dashboard': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /**
+     * Dashboard
+     * @description The selected month (default: the latest with transactions) and the cash-flow trail.
+     *     `null` when there are no transactions yet. The ETag changes whenever the user's financial
+     *     data does (`app_user.data_version`), so an unchanged dashboard costs one indexed lookup.
+     */
+    get: operations['dashboard_api_v1_dashboard_get']
+    put?: never
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/api/v1/budgets': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /**
+     * List Budgets
+     * @description The limit in force for each category in the month (default: this month).
+     */
+    get: operations['list_budgets_api_v1_budgets_get']
+    put?: never
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/api/v1/budgets/{category_id}': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    /**
+     * Put Budget
+     * @description Set (or with null, remove) a category's limit from a month on.
+     */
+    put: operations['put_budget_api_v1_budgets__category_id__put']
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
 }
 export type webhooks = Record<string, never>
 export interface components {
@@ -822,6 +923,30 @@ export interface components {
     AccountSuggestion: {
       create: components['schemas']['AccountDraft']
     }
+    /** AccountTotalsOut */
+    AccountTotalsOut: {
+      account: components['schemas']['AccountRef']
+      /**
+       * Income
+       * @example 2350.00
+       */
+      income: string
+      /**
+       * Spending
+       * @example 2350.00
+       */
+      spending: string
+      /**
+       * Invested
+       * @example 2350.00
+       */
+      invested: string
+      /**
+       * Net
+       * @example 2350.00
+       */
+      net: string
+    }
     /**
      * AccountType
      * @enum {string}
@@ -866,6 +991,88 @@ export interface components {
      * @enum {string}
      */
     ApplyScopeName: 'uncategorised' | 'all'
+    /** BiggestSpend */
+    BiggestSpend: {
+      category: components['schemas']['CategoryRef']
+      /**
+       * Amount
+       * @example 2350.00
+       */
+      amount: string
+    }
+    /** BudgetList */
+    BudgetList: {
+      /**
+       * Month
+       * @example 2026-09
+       */
+      month: string
+      /** Items */
+      items: components['schemas']['BudgetOut'][]
+    }
+    /** BudgetOut */
+    BudgetOut: {
+      /**
+       * Category Id
+       * Format: uuid
+       */
+      category_id: string
+      /**
+       * Effective From
+       * Format: date
+       */
+      effective_from: string
+      /** Monthly Limit */
+      monthly_limit: string | null
+    }
+    /** BudgetPut */
+    BudgetPut: {
+      /**
+       * Effective From
+       * @description The month the limit starts in
+       * @example 2026-09
+       */
+      effective_from: string
+      /**
+       * Monthly Limit
+       * @description null = no limit from this month on
+       */
+      monthly_limit: string | null
+    }
+    /** CashflowMonthOut */
+    CashflowMonthOut: {
+      /**
+       * Month
+       * @example 2026-09
+       */
+      month: string
+      /**
+       * Income
+       * @example 2350.00
+       */
+      income: string
+      /**
+       * Spending
+       * @example 2350.00
+       */
+      spending: string
+      /**
+       * Net Saving
+       * @example 2350.00
+       */
+      net_saving: string
+      /**
+       * Invested
+       * @example 2350.00
+       */
+      invested: string
+    }
+    /** CategoriesOut */
+    CategoriesOut: {
+      summary: components['schemas']['LimitsSummaryOut'] | null
+      /** Items */
+      items: components['schemas']['CategoryLimitOut'][]
+    }
     /**
      * CategorisedBy
      * @enum {string}
@@ -880,6 +1087,26 @@ export interface components {
       parent_id?: string | null
       /** Colour */
       colour?: string | null
+    }
+    /** CategoryLimitOut */
+    CategoryLimitOut: {
+      category: components['schemas']['CategoryRef']
+      /**
+       * Spent
+       * @example 2350.00
+       */
+      spent: string
+      /** Limit */
+      limit: string | null
+      /** Remaining */
+      remaining: string | null
+      /** Pct Used */
+      pct_used: number | null
+      /**
+       * Status
+       * @enum {string}
+       */
+      status: 'under' | 'over' | 'no_limit'
     }
     /** CategoryList */
     CategoryList: {
@@ -908,6 +1135,19 @@ export interface components {
       sort_order: number
       /** Archived */
       archived: boolean
+    }
+    /** CategoryRef */
+    CategoryRef: {
+      /**
+       * Id
+       * Format: uuid
+       */
+      id: string
+      /** Name */
+      name: string
+      type: components['schemas']['CategoryType']
+      /** Colour */
+      colour: string | null
     }
     /**
      * CategoryType
@@ -946,6 +1186,35 @@ export interface components {
       /** Excluded */
       excluded: number
     }
+    /** DashboardMonths */
+    DashboardMonths: {
+      /**
+       * Months
+       * @description Months with transactions, newest first
+       */
+      months: string[]
+    }
+    /** DashboardOut */
+    DashboardOut: {
+      /**
+       * Month
+       * @example 2026-09
+       */
+      month: string
+      /** Prev Month */
+      prev_month: string | null
+      headline: components['schemas']['Headline']
+      biggest_spend: components['schemas']['BiggestSpend'] | null
+      /** Review Count */
+      review_count: number
+      /** Cashflow */
+      cashflow: components['schemas']['CashflowMonthOut'][]
+      categories: components['schemas']['CategoriesOut']
+      /** Income Sources */
+      income_sources: components['schemas']['IncomeSourceOut'][]
+      /** Accounts */
+      accounts: components['schemas']['AccountTotalsOut'][]
+    }
     /**
      * Direction
      * @enum {string}
@@ -955,6 +1224,14 @@ export interface components {
     HTTPValidationError: {
       /** Detail */
       detail?: components['schemas']['ValidationError'][]
+    }
+    /** Headline */
+    Headline: {
+      income: components['schemas']['MoneyWithChange']
+      spending: components['schemas']['MoneyWithChange']
+      net_saving: components['schemas']['NetSavingHeadline']
+      savings_rate: components['schemas']['RateHeadline']
+      invested: components['schemas']['InvestedHeadline']
     }
     /** HealthOut */
     HealthOut: {
@@ -1059,6 +1336,27 @@ export interface components {
       | 'rolled_back'
       | 'discarded'
       | 'failed'
+    /** IncomeSourceOut */
+    IncomeSourceOut: {
+      category: components['schemas']['CategoryRef']
+      /**
+       * Amount
+       * @example 2350.00
+       */
+      amount: string
+      /** Prev Amount */
+      prev_amount: string | null
+    }
+    /** InvestedHeadline */
+    InvestedHeadline: {
+      /**
+       * Value
+       * @example 2350.00
+       */
+      value: string
+      /** Pct Of Net Saving */
+      pct_of_net_saving: number | null
+    }
     /** JobAccepted */
     JobAccepted: {
       job: components['schemas']['JobOut']
@@ -1101,6 +1399,27 @@ export interface components {
      * @enum {string}
      */
     JobStatus: 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled'
+    /** LimitsSummaryOut */
+    LimitsSummaryOut: {
+      /**
+       * Spent In Limits
+       * @example 2350.00
+       */
+      spent_in_limits: string
+      /**
+       * Limits Total
+       * @example 2350.00
+       */
+      limits_total: string
+      /**
+       * Left
+       * @description Σ limit - Σ spent; negative when over in total
+       * @example 2350.00
+       */
+      left: string
+      /** Over Count */
+      over_count: number
+    }
     /**
      * MatchKind
      * @enum {string}
@@ -1128,6 +1447,46 @@ export interface components {
       api_version: string
       /** Mode */
       mode: string
+      /**
+       * Metric Definitions
+       * @description The metric spec (ARCHITECTURE §12); the UI shows these as tooltips
+       */
+      metric_definitions: {
+        [key: string]: components['schemas']['MetricDefinitionOut']
+      }
+    }
+    /** MetricDefinitionOut */
+    MetricDefinitionOut: {
+      /** Label */
+      label: string
+      /** Formula */
+      formula: string
+      /** Tooltip */
+      tooltip: string
+    }
+    /** MoneyWithChange */
+    MoneyWithChange: {
+      /**
+       * Value
+       * @example 2350.00
+       */
+      value: string
+      /** Prev */
+      prev: string | null
+      /** Delta Pct */
+      delta_pct: number | null
+    }
+    /** NetSavingHeadline */
+    NetSavingHeadline: {
+      /**
+       * Value
+       * @example 2350.00
+       */
+      value: string
+      /** Prev */
+      prev: string | null
+      /** Delta */
+      delta: string | null
     }
     /** ParserCandidate */
     ParserCandidate: {
@@ -1192,6 +1551,15 @@ export interface components {
     /** PreferencesUpdate */
     PreferencesUpdate: {
       theme?: components['schemas']['Theme'] | null
+    }
+    /** RateHeadline */
+    RateHeadline: {
+      /** Value */
+      value: number | null
+      /** Prev */
+      prev: number | null
+      /** Delta Pts */
+      delta_pts: number | null
     }
     /**
      * ReconStatus
@@ -1599,6 +1967,65 @@ export interface components {
       /** Updated */
       updated: number
     }
+    /** TxnListItem */
+    TxnListItem: {
+      /**
+       * Id
+       * Format: uuid
+       */
+      id: string
+      /**
+       * Account Id
+       * Format: uuid
+       */
+      account_id: string
+      /** Import Id */
+      import_id: string | null
+      /**
+       * Date
+       * Format: date
+       */
+      date: string
+      /** Description */
+      description: string
+      /** Description Norm */
+      description_norm: string
+      /** Payee Label */
+      payee_label: string | null
+      /**
+       * Amount
+       * @example 2350.00
+       */
+      amount: string
+      direction: components['schemas']['Direction']
+      /**
+       * Category Id
+       * Format: uuid
+       */
+      category_id: string
+      type: components['schemas']['CategoryType']
+      categorised_by: components['schemas']['CategorisedBy']
+      /** Rule Id */
+      rule_id: string | null
+      /** Needs Review */
+      needs_review: boolean
+      /** Notes */
+      notes: string | null
+      /** Account Name */
+      account_name: string
+      /** Category Name */
+      category_name: string
+    }
+    /** TxnListOut */
+    TxnListOut: {
+      /** Items */
+      items: components['schemas']['TxnListItem'][]
+      /** Next Cursor */
+      next_cursor: string | null
+      /** Total */
+      total: number
+      sums: components['schemas']['TxnSums']
+    }
     /** TxnOut */
     TxnOut: {
       /**
@@ -1643,6 +2070,29 @@ export interface components {
       needs_review: boolean
       /** Notes */
       notes: string | null
+    }
+    /** TxnSums */
+    TxnSums: {
+      /**
+       * Income
+       * @example 2350.00
+       */
+      income: string
+      /**
+       * Spending
+       * @example 2350.00
+       */
+      spending: string
+      /**
+       * Invested
+       * @example 2350.00
+       */
+      invested: string
+      /**
+       * Transfers
+       * @example 2350.00
+       */
+      transfers: string
     }
     /** TxnUpdate */
     TxnUpdate: {
@@ -2493,6 +2943,48 @@ export interface operations {
       }
     }
   }
+  list_transactions_api_v1_transactions_get: {
+    parameters: {
+      query?: {
+        month?: string | null
+        from?: string | null
+        to?: string | null
+        account_id?: string[] | null
+        category_id?: string[] | null
+        type?: components['schemas']['CategoryType'][] | null
+        needs_review?: boolean | null
+        q?: string | null
+        sort?: 'date' | 'description' | 'account' | 'category' | 'type' | 'amount'
+        order?: 'asc' | 'desc'
+        limit?: number
+        cursor?: string | null
+      }
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['TxnListOut']
+        }
+      }
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['HTTPValidationError']
+        }
+      }
+    }
+  }
   get_transaction_api_v1_transactions__txn_id__get: {
     parameters: {
       query?: never
@@ -3117,6 +3609,131 @@ export interface operations {
         }
         content: {
           'application/json': components['schemas']['RuleOut']
+        }
+      }
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['HTTPValidationError']
+        }
+      }
+    }
+  }
+  dashboard_months_api_v1_dashboard_months_get: {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['DashboardMonths']
+        }
+      }
+    }
+  }
+  dashboard_api_v1_dashboard_get: {
+    parameters: {
+      query?: {
+        month?: string | null
+        trail?: number
+      }
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['DashboardOut'] | null
+        }
+      }
+      /** @description Not modified (send the ETag back in If-None-Match) */
+      304: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['HTTPValidationError']
+        }
+      }
+    }
+  }
+  list_budgets_api_v1_budgets_get: {
+    parameters: {
+      query?: {
+        month?: string | null
+      }
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['BudgetList']
+        }
+      }
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['HTTPValidationError']
+        }
+      }
+    }
+  }
+  put_budget_api_v1_budgets__category_id__put: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        category_id: string
+      }
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['BudgetPut']
+      }
+    }
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['BudgetOut']
         }
       }
       /** @description Validation Error */

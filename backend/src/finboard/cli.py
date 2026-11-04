@@ -8,6 +8,7 @@ finboard openapi   print the OpenAPI schema (used to generate frontend types)
 finboard init      write a secret key (FINBOARD_SECRET_KEY) to .env if there isn't one
 finboard parsers   list installed statement parsers (and any that failed to load)
 finboard inspect-layout <pdf>   print a statement's structure with contents masked
+finboard demo-data synthetic sample transactions and limits for the local user (empty DB only)
 """
 
 import argparse
@@ -135,6 +136,37 @@ def cmd_inspect_layout(args: argparse.Namespace) -> None:
     )
 
 
+def cmd_demo_data(_args: argparse.Namespace) -> None:
+    """Load the synthetic handover sample into the local user (an empty Finboard only)."""
+    import asyncio
+
+    from finboard.db.engine import create_engine, create_sessionmaker
+    from finboard.db.uow import unit_of_work
+    from finboard.domain.errors import FinboardError
+    from finboard.services.demo import load_demo
+    from finboard.services.users import ensure_local_user
+
+    async def run() -> None:
+        engine = create_engine(get_settings())
+        try:
+            sessionmaker = create_sessionmaker(engine)
+            principal = await ensure_local_user(sessionmaker)
+            async with unit_of_work(sessionmaker, principal.user_id) as uow:
+                result = await load_demo(uow)
+        finally:
+            await engine.dispose()
+        print(
+            f"Loaded {result.transactions} demo transactions in {result.accounts} accounts "
+            f"({result.first_month:%b %Y} to {result.last_month:%b %Y}) and "
+            f"{result.budgets} monthly limits."
+        )
+
+    try:
+        asyncio.run(run())
+    except FinboardError as exc:
+        sys.exit(exc.detail)
+
+
 def cmd_dev(_args: argparse.Namespace) -> None:
     if init_secret_key(BACKEND_DIR / ".env"):
         print("Created a dev FINBOARD_SECRET_KEY in backend/.env (needed to unlock statements).")
@@ -235,6 +267,9 @@ def main(argv: list[str] | None = None) -> None:
     init.set_defaults(func=cmd_init)
 
     sub.add_parser("parsers", help="list installed parsers").set_defaults(func=cmd_parsers)
+    sub.add_parser(
+        "demo-data", help="load synthetic sample data (screenshots, trying Finboard out)"
+    ).set_defaults(func=cmd_demo_data)
 
     inspect = sub.add_parser(
         "inspect-layout", help="print a statement's structure with contents masked"

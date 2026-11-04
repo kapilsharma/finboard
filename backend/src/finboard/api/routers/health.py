@@ -3,7 +3,8 @@ from sqlalchemy import text
 
 from finboard import __version__
 from finboard.api.deps import SettingsDep
-from finboard.api.schemas import HealthOut, MetaOut
+from finboard.api.schemas import HealthOut, MetaOut, MetricDefinitionOut
+from finboard.domain.metrics import METRIC_DEFINITIONS
 
 router = APIRouter(tags=["ops"])
 
@@ -38,4 +39,12 @@ async def ready(request: Request, response: Response) -> HealthOut:
 
 @router.get("/meta")
 async def meta(settings: SettingsDep) -> MetaOut:
-    return MetaOut(version=__version__, api_version="v1", mode=settings.mode.value)
+    return MetaOut(
+        version=__version__,
+        api_version="v1",
+        mode=settings.mode.value,
+        metric_definitions={
+            key: MetricDefinitionOut(label=d.label, formula=d.formula, tooltip=d.tooltip)
+            for key, d in METRIC_DEFINITIONS.items()
+        },
+    )

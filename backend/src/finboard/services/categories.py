@@ -64,7 +64,7 @@ class CategoryService:
         if type_changed:
             # txn.type is denormalised from the category: keep the two in step (§9).
             await self.uow.txns.set_type_for_category(category.id, category.type)
-            await self.uow.users.bump_data_version(self.uow.user_id)
+        await self.uow.users.bump_data_version(self.uow.user_id)  # names show on the dashboard
         await self.uow.session.flush()
         await self.uow.commit()
         return category

@@ -11,13 +11,24 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import Any
 
-from sqlalchemy import bindparam, delete, exists, func, or_, select, text, update
+from sqlalchemy import (
+    bindparam,
+    delete,
+    exists,
+    func,
+    or_,
+    select,
+    text,
+    tuple_,
+    update,
+)
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from finboard.db.models import (
     Account,
     AppUser,
+    Budget,
     Category,
     ImportBatch,
     ImportRow,
@@ -364,7 +375,105 @@ class TxnFactsRow:
     needs_review: bool
 
 
+@dataclass(frozen=True, slots=True)
+class TxnFilters:
+    start: date | None = None
+    end: date | None = None
+    account_ids: Sequence[uuid.UUID] = ()
+    category_ids: Sequence[uuid.UUID] = ()
+    types: Sequence[CategoryType] = ()
+    needs_review: bool | None = None
+    q: str | None = None  # matched against description, account and category name
+    q_norm: str | None = None  # the same text, normalised like descriptions are
+
+
+@dataclass(frozen=True, slots=True)
+class TxnListRow:
+    txn: Txn
+    account_name: str
+    category_name: str
+    sort_value: Any
+
+
+def _like(text_: str) -> str:
+    escaped = text_.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+    return f"%{escaped}%"
+
+
 class TxnRepo(_UserScoped):
+    SORT_KEYS = ("date", "description", "account", "category", "type", "amount")
+
+    def _sort_expr(self, key: str) -> Any:
+        return {
+            "date": Txn.date,
+            "description": func.lower(Txn.description_raw),
+            "account": func.lower(Account.name),
+            "category": func.lower(Category.name),
+            "type": Txn.type,
+            "amount": Txn.amount,
+        }[key]
+
+    def _filtered(self, filters: TxnFilters) -> Any:
+        stmt = (
+            select(Txn)
+            .join(Account, (Account.user_id == Txn.user_id) & (Account.id == Txn.account_id))
+            .join(Category, (Category.user_id == Txn.user_id) & (Category.id == Txn.category_id))
+            .where(Txn.user_id == self.user_id)
+        )
+        if filters.start is not None:
+            stmt = stmt.where(Txn.date >= filters.start)
+        if filters.end is not None:
+            stmt = stmt.where(Txn.date <= filters.end)
+        if filters.account_ids:
+            stmt = stmt.where(Txn.account_id.in_(filters.account_ids))
+        if filters.category_ids:
+            stmt = stmt.where(Txn.category_id.in_(filters.category_ids))
+        if filters.types:
+            stmt = stmt.where(Txn.type.in_(filters.types))
+        if filters.needs_review is not None:
+            stmt = stmt.where(Txn.needs_review.is_(filters.needs_review))
+        if filters.q:
+            conditions = [
+                Txn.description_raw.ilike(_like(filters.q), escape="\\"),
+                Account.name.ilike(_like(filters.q), escape="\\"),
+                Category.name.ilike(_like(filters.q), escape="\\"),
+            ]
+            if filters.q_norm:  # uses the trigram index on description_norm
+                conditions.append(Txn.description_norm.ilike(_like(filters.q_norm), escape="\\"))
+            stmt = stmt.where(or_(*conditions))
+        return stmt
+
+    async def page(
+        self,
+        filters: TxnFilters,
+        *,
+        sort: str,
+        descending: bool,
+        after: tuple[Any, uuid.UUID] | None,
+        limit: int,
+    ) -> list[TxnListRow]:
+        """One page, keyset-paged on (sort value, id): stable under inserts, no OFFSET."""
+        key = self._sort_expr(sort)
+        stmt = self._filtered(filters).add_columns(Account.name, Category.name, key)
+        if after is not None:
+            position = tuple_(key, Txn.id)
+            bound = tuple_(bindparam("after_v", after[0]), bindparam("after_id", after[1]))
+            stmt = stmt.where(position < bound if descending else position > bound)
+        order = (key.desc(), Txn.id.desc()) if descending else (key.asc(), Txn.id.asc())
+        stmt = stmt.order_by(*order).limit(limit)
+        result = await self.session.execute(stmt)
+        return [TxnListRow(t, a, c, v) for t, a, c, v in result.all()]
+
+    async def filtered_sums(
+        self, filters: TxnFilters
+    ) -> list[tuple[CategoryType, Direction, Decimal, int]]:
+        """(type, direction, Σ amount, count) over every row the filters match."""
+        sub = self._filtered(filters).subquery()
+        stmt = select(sub.c.type, sub.c.direction, func.sum(sub.c.amount), func.count()).group_by(
+            sub.c.type, sub.c.direction
+        )
+        return [(t, d, amount, int(n)) for t, d, amount, n in await self.session.execute(stmt)]
+
     async def get(self, txn_id: uuid.UUID, *, for_update: bool = False) -> Txn | None:
         stmt = select(Txn).where(Txn.user_id == self.user_id, Txn.id == txn_id)
         if for_update:
@@ -737,5 +846,112 @@ class TransferRepo(_UserScoped):
     async def count(self, status: TransferStatus) -> int:
         stmt = select(func.count()).where(
             TransferPair.user_id == self.user_id, TransferPair.status == status
+        )
+        return int(await self.session.scalar(stmt) or 0)
+
+
+# ---------------------------------------------------------------- dashboard and budgets (§10, §12)
+
+
+class BudgetRepo(_UserScoped):
+    async def effective(self, month_start: date) -> dict[uuid.UUID, Decimal | None]:
+        """Each category's limit for the month: the row with the greatest effective_from on or
+        before it. Categories without one are absent; a NULL limit means "no limit"."""
+        stmt = (
+            select(Budget.category_id, Budget.monthly_limit)
+            .where(Budget.user_id == self.user_id, Budget.effective_from <= month_start)
+            .order_by(Budget.category_id, Budget.effective_from.desc())
+            .distinct(Budget.category_id)
+        )
+        return {cid: limit for cid, limit in (await self.session.execute(stmt)).all()}
+
+    async def effective_rows(self, month_start: date) -> list[Budget]:
+        stmt = (
+            select(Budget)
+            .where(Budget.user_id == self.user_id, Budget.effective_from <= month_start)
+            .order_by(Budget.category_id, Budget.effective_from.desc())
+            .distinct(Budget.category_id)
+        )
+        return list((await self.session.scalars(stmt)).all())
+
+    async def put(
+        self, category_id: uuid.UUID, effective_from: date, limit: Decimal | None
+    ) -> Budget:
+        stmt = (
+            insert(Budget)
+            .values(
+                user_id=self.user_id,
+                category_id=category_id,
+                effective_from=effective_from,
+                monthly_limit=limit,
+            )
+            .on_conflict_do_update(
+                index_elements=[Budget.user_id, Budget.category_id, Budget.effective_from],
+                set_={"monthly_limit": limit, "updated_at": func.now()},
+            )
+            .returning(Budget)
+        )
+        budget = (await self.session.execute(stmt)).scalar_one()
+        return budget
+
+
+@dataclass(frozen=True, slots=True)
+class GroupedSum:
+    month: date
+    type: CategoryType
+    direction: Direction
+    category_id: uuid.UUID
+    account_id: uuid.UUID
+    amount: Decimal
+
+
+class DashboardRepo(_UserScoped):
+    """The grouped SQL behind the dashboard. Every query is an index range scan on
+    (user_id, date …) (ARCHITECTURE §12, §14)."""
+
+    async def months(self) -> list[date]:
+        """First day of every month that has transactions, newest first."""
+        month = func.date_trunc("month", Txn.date)
+        stmt = (
+            select(month.label("m"))
+            .where(Txn.user_id == self.user_id)
+            .group_by(month)
+            .order_by(month.desc())
+        )
+        return [
+            m.date() if isinstance(m, datetime) else m for (m,) in await self.session.execute(stmt)
+        ]
+
+    async def grouped_sums(self, start: date, end: date) -> list[GroupedSum]:
+        """SUM(amount) per month, type, direction, category and account, transfers left out."""
+        month = func.date_trunc("month", Txn.date)
+        stmt = (
+            select(
+                month.label("m"),
+                Txn.type,
+                Txn.direction,
+                Txn.category_id,
+                Txn.account_id,
+                func.sum(Txn.amount),
+            )
+            .where(
+                Txn.user_id == self.user_id,
+                Txn.date >= start,
+                Txn.date <= end,
+                Txn.type != CategoryType.TRANSFER,
+            )
+            .group_by(month, Txn.type, Txn.direction, Txn.category_id, Txn.account_id)
+        )
+        return [
+            GroupedSum(m.date() if isinstance(m, datetime) else m, t, d, c, a, amount)
+            for m, t, d, c, a, amount in await self.session.execute(stmt)
+        ]
+
+    async def review_count(self, start: date, end: date) -> int:
+        stmt = select(func.count()).where(
+            Txn.user_id == self.user_id,
+            Txn.needs_review.is_(True),
+            Txn.date >= start,
+            Txn.date <= end,
         )
         return int(await self.session.scalar(stmt) or 0)
