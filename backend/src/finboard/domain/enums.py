@@ -83,3 +83,16 @@ class CategorisedBy(StrEnum):
 class ImportRowOutcome(StrEnum):
     INSERTED = "inserted"
     DUPLICATE = "duplicate"
+
+
+class MatchKind(StrEnum):
+    CONTAINS = "contains"
+    STARTS_WITH = "starts_with"
+    EQUALS = "equals"
+    REGEX = "regex"
+
+
+class TransferStatus(StrEnum):
+    SUGGESTED = "suggested"
+    CONFIRMED = "confirmed"
+    REJECTED = "rejected"

@@ -6,10 +6,12 @@ row. That is the application-level guard; Postgres RLS is the second, independen
 
 import uuid
 from collections.abc import Iterable, Mapping, Sequence
-from datetime import date
+from dataclasses import dataclass
+from datetime import date, datetime
+from decimal import Decimal
 from typing import Any
 
-from sqlalchemy import delete, exists, func, select, text, update
+from sqlalchemy import bindparam, delete, exists, func, or_, select, text, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -20,11 +22,21 @@ from finboard.db.models import (
     ImportBatch,
     ImportRow,
     Job,
+    Rule,
     StagedRow,
+    TransferPair,
     Txn,
     UserSetting,
 )
-from finboard.domain.enums import ImportRowOutcome, ImportStatus
+from finboard.domain.enums import (
+    AccountType,
+    CategorisedBy,
+    CategoryType,
+    Direction,
+    ImportRowOutcome,
+    ImportStatus,
+    TransferStatus,
+)
 
 
 class UserRepo:
@@ -50,6 +62,13 @@ class UserRepo:
             .where(AppUser.id == user_id)
             .values(data_version=AppUser.data_version + 1)
         )
+
+
+async def _executemany(session: AsyncSession, stmt: Any, params: list[dict[str, Any]]) -> None:
+    """A Core executemany (UPDATE … WHERE id = :b_id per row). Run on the connection: passing a
+    parameter list to `session.execute` with an ORM entity would mean ORM bulk-update-by-PK."""
+    connection = await session.connection()
+    await connection.execute(stmt, params)
 
 
 class _UserScoped:
@@ -157,6 +176,10 @@ class CategoryRepo(_UserScoped):
 
     async def in_use(self, category_id: uuid.UUID) -> bool:
         stmt = select(exists().where(Txn.user_id == self.user_id, Txn.category_id == category_id))
+        return bool(await self.session.scalar(stmt))
+
+    async def used_by_rules(self, category_id: uuid.UUID) -> bool:
+        stmt = select(exists().where(Rule.user_id == self.user_id, Rule.category_id == category_id))
         return bool(await self.session.scalar(stmt))
 
     async def by_system_key(self, key: str) -> Category | None:
@@ -322,7 +345,140 @@ class StagedRowRepo(_UserScoped):
         )
 
 
+@dataclass(frozen=True, slots=True)
+class TxnFactsRow:
+    """The columns categorisation and pairing need, without loading ORM objects."""
+
+    id: uuid.UUID
+    account_id: uuid.UUID
+    account_type: AccountType
+    date: date
+    direction: Direction
+    amount: Decimal
+    description_raw: str
+    description_norm: str
+    category_id: uuid.UUID
+    type: CategoryType
+    categorised_by: CategorisedBy
+    rule_id: uuid.UUID | None
+    needs_review: bool
+
+
 class TxnRepo(_UserScoped):
+    async def get(self, txn_id: uuid.UUID, *, for_update: bool = False) -> Txn | None:
+        stmt = select(Txn).where(Txn.user_id == self.user_id, Txn.id == txn_id)
+        if for_update:
+            stmt = stmt.with_for_update()
+        return (await self.session.execute(stmt)).scalar_one_or_none()
+
+    async def get_many(self, ids: Sequence[uuid.UUID], *, for_update: bool = False) -> list[Txn]:
+        if not ids:
+            return []
+        stmt = select(Txn).where(Txn.user_id == self.user_id, Txn.id.in_(ids)).order_by(Txn.id)
+        if for_update:
+            stmt = stmt.with_for_update()
+        return list((await self.session.scalars(stmt)).all())
+
+    async def facts(
+        self,
+        *,
+        categorised_by: Sequence[CategorisedBy] | None = None,
+        ids: Sequence[uuid.UUID] | None = None,
+        exclude_paired: bool = False,
+        since: date | None = None,
+    ) -> list[TxnFactsRow]:
+        stmt = select(
+            Txn.id,
+            Txn.account_id,
+            Account.type,
+            Txn.date,
+            Txn.direction,
+            Txn.amount,
+            Txn.description_raw,
+            Txn.description_norm,
+            Txn.category_id,
+            Txn.type,
+            Txn.categorised_by,
+            Txn.rule_id,
+            Txn.needs_review,
+        ).join(Account, (Account.user_id == Txn.user_id) & (Account.id == Txn.account_id))
+        stmt = stmt.where(Txn.user_id == self.user_id)
+        if categorised_by is not None:
+            stmt = stmt.where(Txn.categorised_by.in_(categorised_by))
+        if ids is not None:
+            stmt = stmt.where(Txn.id.in_(ids))
+        if since is not None:
+            stmt = stmt.where(Txn.date >= since)
+        if exclude_paired:
+            active = select(TransferPair.debit_txn_id, TransferPair.credit_txn_id).where(
+                TransferPair.user_id == self.user_id,
+                TransferPair.status != TransferStatus.REJECTED,
+            )
+            sub = active.subquery()
+            stmt = stmt.where(
+                ~exists().where(or_(sub.c.debit_txn_id == Txn.id, sub.c.credit_txn_id == Txn.id))
+            )
+        stmt = stmt.order_by(Txn.date, Txn.id)
+        return [TxnFactsRow(*row) for row in (await self.session.execute(stmt)).all()]
+
+    async def set_categories(self, changes: Sequence[Mapping[str, Any]]) -> None:
+        """Bulk update by id. Each change has id, category_id, type, categorised_by, rule_id,
+        needs_review and description_norm. One UPDATE … FROM unnest(arrays) statement: far
+        faster than a statement per row (the 50k re-apply budget, ARCHITECTURE §14)."""
+        if not changes:
+            return
+        stmt = text(
+            """
+            UPDATE txn AS t
+            SET category_id = v.category_id, type = v.type, categorised_by = v.categorised_by,
+                rule_id = v.rule_id, needs_review = v.needs_review,
+                description_norm = v.description_norm, updated_at = now()
+            FROM unnest(
+                CAST(:ids AS uuid[]), CAST(:category_ids AS uuid[]), CAST(:types AS text[]),
+                CAST(:categorised_by AS text[]), CAST(:rule_ids AS uuid[]),
+                CAST(:needs_review AS boolean[]), CAST(:norms AS text[])
+            ) AS v(id, category_id, type, categorised_by, rule_id, needs_review, description_norm)
+            WHERE t.user_id = :user_id AND t.id = v.id
+            """
+        )
+        await self.session.execute(
+            stmt,
+            {
+                "user_id": self.user_id,
+                "ids": [c["id"] for c in changes],
+                "category_ids": [c["category_id"] for c in changes],
+                "types": [str(c["type"]) for c in changes],
+                "categorised_by": [str(c["categorised_by"]) for c in changes],
+                "rule_ids": [c["rule_id"] for c in changes],
+                "needs_review": [bool(c["needs_review"]) for c in changes],
+                "norms": [c["description_norm"] for c in changes],
+            },
+        )
+
+    async def set_type_for_category(self, category_id: uuid.UUID, type_: CategoryType) -> int:
+        result = await self.session.execute(
+            update(Txn)
+            .where(Txn.user_id == self.user_id, Txn.category_id == category_id)
+            .values(type=type_)
+            .execution_options(synchronize_session=False)
+        )
+        return int(result.rowcount or 0)  # type: ignore[attr-defined]
+
+    async def needing_review(
+        self, *, start: date | None = None, end: date | None = None, limit: int = 2000
+    ) -> list[Txn]:
+        stmt = select(Txn).where(Txn.user_id == self.user_id, Txn.needs_review.is_(True))
+        if start is not None:
+            stmt = stmt.where(Txn.date >= start)
+        if end is not None:
+            stmt = stmt.where(Txn.date <= end)
+        stmt = stmt.order_by(Txn.date.desc(), Txn.id).limit(limit)
+        return list((await self.session.scalars(stmt)).all())
+
+    async def count_needing_review(self) -> int:
+        stmt = select(func.count()).where(Txn.user_id == self.user_id, Txn.needs_review.is_(True))
+        return int(await self.session.scalar(stmt) or 0)
+
     async def ids_by_fingerprint(self, fingerprints: Iterable[str]) -> dict[str, uuid.UUID]:
         wanted = list(fingerprints)
         if not wanted:
@@ -444,3 +600,142 @@ class ImportRowRepo(_UserScoped):
                 ImportRow.user_id == self.user_id, ImportRow.import_id == import_id
             )
         )
+
+
+# ---------------------------------------------------------------- categorisation (ARCHITECTURE §9)
+
+
+class RuleRepo(_UserScoped):
+    async def list(self, *, enabled_only: bool = False) -> list[Rule]:
+        stmt = select(Rule).where(Rule.user_id == self.user_id)
+        if enabled_only:
+            stmt = stmt.where(Rule.enabled.is_(True))
+        stmt = stmt.order_by(Rule.priority, Rule.id)
+        return list((await self.session.scalars(stmt)).all())
+
+    async def get(self, rule_id: uuid.UUID, *, for_update: bool = False) -> Rule | None:
+        stmt = select(Rule).where(Rule.user_id == self.user_id, Rule.id == rule_id)
+        if for_update:
+            stmt = stmt.with_for_update()
+        return (await self.session.execute(stmt)).scalar_one_or_none()
+
+    async def add(self, rule: Rule) -> Rule:
+        rule.user_id = self.user_id
+        self.session.add(rule)
+        await self.session.flush()
+        return rule
+
+    async def add_all(self, rules: Sequence[Rule]) -> None:
+        for rule in rules:
+            rule.user_id = self.user_id
+        self.session.add_all(rules)
+        await self.session.flush()
+
+    async def delete(self, rule: Rule) -> None:
+        await self.session.delete(rule)
+        await self.session.flush()
+
+    async def delete_all(self) -> None:
+        await self.session.execute(delete(Rule).where(Rule.user_id == self.user_id))
+
+    async def next_priority(self) -> int:
+        stmt = select(func.max(Rule.priority)).where(Rule.user_id == self.user_id)
+        current = await self.session.scalar(stmt)
+        return 0 if current is None else int(current) + 1
+
+    async def lock(self) -> None:
+        """Serialise rule-order changes for this user (transaction-scoped)."""
+        await self.session.execute(
+            text("SELECT pg_advisory_xact_lock(hashtextextended('finboard:rules:' || :u, 0))"),
+            {"u": str(self.user_id)},
+        )
+
+    async def set_priorities(self, ordered_ids: Sequence[uuid.UUID]) -> None:
+        if not ordered_ids:
+            return
+        stmt = (
+            update(Rule)
+            .where(Rule.user_id == self.user_id, Rule.id == bindparam("b_id"))
+            .values(priority=bindparam("b_priority"))
+            .execution_options(synchronize_session=False)
+        )
+        await _executemany(
+            self.session,
+            stmt,
+            [{"b_id": rid, "b_priority": i} for i, rid in enumerate(ordered_ids)],
+        )
+
+    async def add_hits(self, hits: Mapping[uuid.UUID, int], at: datetime) -> None:
+        if not hits:
+            return
+        stmt = (
+            update(Rule)
+            .where(Rule.user_id == self.user_id, Rule.id == bindparam("b_id"))
+            .values(hits=Rule.hits + bindparam("b_hits"), last_hit_at=at)
+            .execution_options(synchronize_session=False)
+        )
+        await _executemany(self.session, stmt, [{"b_id": k, "b_hits": v} for k, v in hits.items()])
+
+    async def disable(self, rule_ids: Iterable[uuid.UUID], error: str) -> None:
+        ids = list(rule_ids)
+        if ids:
+            await self.session.execute(
+                update(Rule)
+                .where(Rule.user_id == self.user_id, Rule.id.in_(ids))
+                .values(enabled=False, error=error)
+                .execution_options(synchronize_session=False)
+            )
+
+
+class TransferRepo(_UserScoped):
+    async def list(self, status: TransferStatus | None) -> list[TransferPair]:
+        stmt = select(TransferPair).where(TransferPair.user_id == self.user_id)
+        if status is not None:
+            stmt = stmt.where(TransferPair.status == status)
+        stmt = stmt.order_by(TransferPair.created_at.desc(), TransferPair.id)
+        return list((await self.session.scalars(stmt)).all())
+
+    async def get(self, pair_id: uuid.UUID, *, for_update: bool = False) -> TransferPair | None:
+        stmt = select(TransferPair).where(
+            TransferPair.user_id == self.user_id, TransferPair.id == pair_id
+        )
+        if for_update:
+            stmt = stmt.with_for_update()
+        return (await self.session.execute(stmt)).scalar_one_or_none()
+
+    async def active_for_txn(self, txn_id: uuid.UUID) -> TransferPair | None:
+        stmt = select(TransferPair).where(
+            TransferPair.user_id == self.user_id,
+            TransferPair.status != TransferStatus.REJECTED,
+            or_(TransferPair.debit_txn_id == txn_id, TransferPair.credit_txn_id == txn_id),
+        )
+        return (await self.session.execute(stmt.with_for_update())).scalar_one_or_none()
+
+    async def rejected_keys(self) -> set[tuple[uuid.UUID, uuid.UUID]]:
+        stmt = select(TransferPair.debit_txn_id, TransferPair.credit_txn_id).where(
+            TransferPair.user_id == self.user_id, TransferPair.status == TransferStatus.REJECTED
+        )
+        return {(d, c) for d, c in (await self.session.execute(stmt)).all()}
+
+    async def add_suggestions(self, pairs: Sequence[Mapping[str, Any]]) -> int:
+        """Insert suggested pairs, skipping any that a concurrent run already added."""
+        if not pairs:
+            return 0
+        stmt = (
+            insert(TransferPair)
+            .values(
+                [
+                    {**pair, "user_id": self.user_id, "status": TransferStatus.SUGGESTED}
+                    for pair in pairs
+                ]
+            )
+            .on_conflict_do_nothing()
+            .returning(TransferPair.id)
+        )
+        return len((await self.session.execute(stmt)).all())
+
+    async def count(self, status: TransferStatus) -> int:
+        stmt = select(func.count()).where(
+            TransferPair.user_id == self.user_id, TransferPair.status == status
+        )
+        return int(await self.session.scalar(stmt) or 0)

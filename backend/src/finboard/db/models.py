@@ -37,7 +37,9 @@ from finboard.domain.enums import (
     ImportSource,
     ImportStatus,
     JobStatus,
+    MatchKind,
     ReconStatus,
+    TransferStatus,
 )
 
 Money = Numeric(14, 2, asdecimal=True)
@@ -235,7 +237,7 @@ class StagedRow(UserOwned, Base):
     possible_duplicate: Mapped[bool] = mapped_column(server_default=text("false"))
     include: Mapped[bool] = mapped_column(server_default=text("true"))
     category_id: Mapped[uuid.UUID | None]
-    rule_id: Mapped[uuid.UUID | None]  # FK arrives with the rule table (M3)
+    rule_id: Mapped[uuid.UUID | None]
     categorised_by: Mapped[CategorisedBy | None] = mapped_column(
         str_enum(CategorisedBy, "categorised_by")
     )
@@ -245,6 +247,7 @@ class StagedRow(UserOwned, Base):
         _user_fk("import_id", "import_batch", ondelete="CASCADE"),
         _user_fk("duplicate_of", "txn", ondelete="SET NULL (duplicate_of)"),
         _user_fk("category_id", "category", ondelete="SET NULL (category_id)"),
+        _user_fk("rule_id", "rule", ondelete="SET NULL (rule_id)"),
         CheckConstraint("amount > 0", name="amount_positive"),
     )
 
@@ -280,6 +283,8 @@ class Txn(UUIDPrimaryKey, UserOwned, Timestamps, Base):
         _user_fk("account_id", "account"),
         _user_fk("import_id", "import_batch", ondelete="SET NULL (import_id)"),
         _user_fk("category_id", "category"),
+        # Deleting a rule keeps the category it gave; re-apply (scope all) re-evaluates the row.
+        _user_fk("rule_id", "rule", ondelete="SET NULL (rule_id)"),
         CheckConstraint("amount > 0", name="amount_positive"),
     )
 
@@ -320,6 +325,85 @@ Index("ix_import_row_txn", ImportRow.txn_id)
 Index("ix_import_row_user_fingerprint", ImportRow.user_id, ImportRow.fingerprint)
 
 
+class Rule(UUIDPrimaryKey, UserOwned, Timestamps, Base):
+    """A categorisation rule (ARCHITECTURE §9). First match in `priority, id` order wins."""
+
+    __tablename__ = "rule"
+
+    priority: Mapped[int] = mapped_column(Integer)
+    match_kind: Mapped[MatchKind] = mapped_column(str_enum(MatchKind, "match_kind"))
+    pattern: Mapped[str] = mapped_column(String(500))
+    account_id: Mapped[uuid.UUID | None]
+    direction: Mapped[Direction | None] = mapped_column(str_enum(Direction, "direction"))
+    amount_min: Mapped[Decimal | None] = mapped_column(Money)
+    amount_max: Mapped[Decimal | None] = mapped_column(Money)
+    category_id: Mapped[uuid.UUID]
+    label: Mapped[str | None] = mapped_column(String(120))
+    enabled: Mapped[bool] = mapped_column(server_default=text("true"))
+    hits: Mapped[int] = mapped_column(BigInteger, server_default=text("0"))
+    last_hit_at: Mapped[datetime | None]
+    # Why the rule was switched off automatically (regex timeout, ADR-0020); cleared on save.
+    error: Mapped[str | None] = mapped_column(Text)
+
+    __table_args__ = (
+        UniqueConstraint("user_id", "id"),
+        _user_fk("account_id", "account", ondelete="CASCADE"),
+        _user_fk("category_id", "category"),  # RESTRICT: a category in use by rules stays
+        CheckConstraint(
+            "amount_min IS NULL OR amount_max IS NULL OR amount_min <= amount_max",
+            name="amount_range",
+        ),
+        CheckConstraint(
+            "(amount_min IS NULL OR amount_min >= 0) AND (amount_max IS NULL OR amount_max >= 0)",
+            name="amounts_not_negative",
+        ),
+    )
+
+
+Index("ix_rule_user_enabled_priority", Rule.user_id, Rule.enabled, Rule.priority, Rule.id)
+
+
+class TransferPair(UUIDPrimaryKey, UserOwned, Timestamps, Base):
+    """A debit in one account and the matching credit in another (ARCHITECTURE §9).
+
+    A transaction is in at most one suggested or confirmed pair. Rejected pairs are kept so
+    they are never suggested again."""
+
+    __tablename__ = "transfer_pair"
+
+    debit_txn_id: Mapped[uuid.UUID]
+    credit_txn_id: Mapped[uuid.UUID]
+    status: Mapped[TransferStatus] = mapped_column(str_enum(TransferStatus, "transfer_status"))
+    score: Mapped[float] = mapped_column(Float, server_default=text("0"))
+    days_apart: Mapped[int] = mapped_column(SmallInteger, server_default=text("0"))
+    decided_at: Mapped[datetime | None]
+
+    __table_args__ = (
+        UniqueConstraint("user_id", "id"),
+        UniqueConstraint("user_id", "debit_txn_id", "credit_txn_id"),
+        _user_fk("debit_txn_id", "txn", ondelete="CASCADE"),
+        _user_fk("credit_txn_id", "txn", ondelete="CASCADE"),
+        CheckConstraint("debit_txn_id <> credit_txn_id", name="two_sides"),
+    )
+
+
+Index(
+    "uq_transfer_pair_user_debit_active",
+    TransferPair.user_id,
+    TransferPair.debit_txn_id,
+    unique=True,
+    postgresql_where=text("status <> 'rejected'"),
+)
+Index(
+    "uq_transfer_pair_user_credit_active",
+    TransferPair.user_id,
+    TransferPair.credit_txn_id,
+    unique=True,
+    postgresql_where=text("status <> 'rejected'"),
+)
+Index("ix_transfer_pair_user_status", TransferPair.user_id, TransferPair.status)
+
+
 class UserSetting(Base):
     __tablename__ = "user_setting"
 
@@ -341,4 +425,6 @@ USER_OWNED_TABLES = (
     "staged_row",
     "txn",
     "import_row",
+    "rule",
+    "transfer_pair",
 )

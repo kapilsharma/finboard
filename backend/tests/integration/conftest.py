@@ -45,7 +45,7 @@ class HeaderAuthBackend:
 class RecordingJobQueue:
     def __init__(self) -> None:
         self.enqueued: list[dict[str, object]] = []
-        self._ran = 0
+        self._done: set[int] = set()
         self.failures: list[Exception] = []
 
     async def enqueue(
@@ -60,26 +60,37 @@ class RecordingJobQueue:
             {"kind": kind, "job_id": job_id, "user_id": user_id, "secret_ref": secret_ref}
         )
 
-    async def drain(self) -> int:
-        """Run every queued `imports.process` job the way a worker would (the real task body,
-        in its own thread and event loop), including jobs queued while draining."""
+    async def drain(self, kinds: tuple[str, ...] = ("imports.process",)) -> int:
+        """Run every queued job of these kinds the way a worker would (the real task body, in
+        its own thread and event loop), including jobs queued while draining."""
         ran = 0
-        while self._ran < len(self.enqueued):
-            entry = self.enqueued[self._ran]
-            self._ran += 1
-            if entry["kind"] != "imports.process":
-                continue
+        while True:
+            pending = [
+                i for i, e in enumerate(self.enqueued) if i not in self._done and e["kind"] in kinds
+            ]
+            if not pending:
+                return ran
+            entry = self.enqueued[pending[0]]
+            self._done.add(pending[0])
+            task = TASKS[str(entry["kind"])]
+            args = [str(entry["job_id"]), str(entry["user_id"])]
+            if entry["kind"] == "imports.process":
+                args.append(entry["secret_ref"])  # type: ignore[arg-type]
             try:
-                await asyncio.to_thread(
-                    tasks.process_import.run,
-                    str(entry["job_id"]),
-                    str(entry["user_id"]),
-                    entry["secret_ref"],
-                )
+                await asyncio.to_thread(task.run, *args)
             except Exception as exc:  # a real worker logs a failed task and carries on
                 self.failures.append(exc)
             ran += 1
-        return ran
+
+    async def drain_all(self) -> int:
+        return await self.drain(tuple(TASKS))
+
+
+TASKS = {
+    "imports.process": tasks.process_import,
+    "rules.apply": tasks.apply_rules,
+    "transfers.suggest": tasks.suggest_transfers,
+}
 
 
 @pytest.fixture(scope="session")

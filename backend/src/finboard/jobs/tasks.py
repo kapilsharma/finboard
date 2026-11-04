@@ -19,6 +19,8 @@ from finboard.jobs.celery_app import celery_app
 from finboard.jobs.queue import CeleryJobQueue
 from finboard.services.imports import ImportLimits, ImportService, mark_killed
 from finboard.services.jobs import JobHandler, JobQueue, run_job
+from finboard.services.rules import RuleService
+from finboard.services.transfers import TransferService
 
 log = structlog.get_logger(__name__)
 
@@ -118,3 +120,26 @@ def process_import(job_id: str, user_id: str, secret_ref: str | None = None) -> 
     # the import with a user-safe message; they aren't worker errors.
     with contextlib.suppress(FinboardError):
         runtime.run(work)
+
+
+# ---------------------------------------------------------------- categorisation
+
+
+async def _apply_rules(uow: UnitOfWork, job: Job) -> dict[str, Any]:
+    return await RuleService(uow, job_queue()).run_apply(job)
+
+
+async def _suggest_transfers(uow: UnitOfWork, job: Job) -> dict[str, Any]:
+    return await TransferService(uow, job_queue()).run_suggest(job)
+
+
+@celery_app.task(name="rules.apply")  # type: ignore[untyped-decorator]
+def apply_rules(job_id: str, user_id: str) -> None:
+    """Re-apply the user's rules to committed transactions (dry run or for real)."""
+    _run(job_id, user_id, _apply_rules)
+
+
+@celery_app.task(name="transfers.suggest")  # type: ignore[untyped-decorator]
+def suggest_transfers(job_id: str, user_id: str) -> None:
+    """Suggest pairs of transactions that move money between the user's own accounts."""
+    _run(job_id, user_id, _suggest_transfers)

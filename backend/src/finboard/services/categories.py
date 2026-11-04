@@ -58,9 +58,13 @@ class CategoryService:
         if name.lower() != category.name.lower() or parent_id != category.parent_id:
             await self._ensure_name_free(name, parent_id, exclude_id=category.id)
 
-        # From M3: a type change also updates the type of the category's transactions.
+        type_changed = "type" in changes and changes["type"] != category.type
         for field, value in changes.items():
             setattr(category, field, value)
+        if type_changed:
+            # txn.type is denormalised from the category: keep the two in step (§9).
+            await self.uow.txns.set_type_for_category(category.id, category.type)
+            await self.uow.users.bump_data_version(self.uow.user_id)
         await self.uow.session.flush()
         await self.uow.commit()
         return category
@@ -74,7 +78,8 @@ class CategoryService:
         if await self.uow.categories.in_use(category.id):
             # Merging into another category arrives in M5.
             raise Conflict("Transactions use this category, so it can't be deleted; archive it")
-        # From M3: also refuse when rules use it.
+        if await self.uow.categories.used_by_rules(category.id):
+            raise Conflict("Rules use this category; change or delete those rules first")
         await self.uow.categories.delete(category)
         await self.uow.commit()
 

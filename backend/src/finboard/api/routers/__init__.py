@@ -8,9 +8,26 @@ from finboard.api.routers import (
     jobs,
     me,
     parsers,
+    review,
+    rules,
     settings,
+    transactions,
+    transfers,
 )
 
 api_router = APIRouter()
-for module in (health, me, accounts, categories, jobs, settings, imports, parsers):
+for module in (
+    health,
+    me,
+    accounts,
+    categories,
+    jobs,
+    settings,
+    imports,
+    parsers,
+    transactions,
+    review,
+    transfers,
+    rules,
+):
     api_router.include_router(module.router)

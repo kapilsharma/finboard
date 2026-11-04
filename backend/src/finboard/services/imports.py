@@ -12,8 +12,10 @@ import are fixed, user-safe strings (ParserError messages are written to be safe
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import uuid
+from collections import Counter
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
@@ -22,6 +24,8 @@ from typing import Any
 import structlog
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from finboard.categorisation.matcher import TxnFacts
+from finboard.categorisation.normalise import normalise
 from finboard.core.config import Settings
 from finboard.db.models import Account, ImportBatch, Job, StagedRow
 from finboard.db.uow import UnitOfWork, unit_of_work
@@ -46,7 +50,6 @@ from finboard.domain.errors import (
 from finboard.domain.fingerprint import (
     FINGERPRINT_VERSION,
     FingerprintInput,
-    dedupe_desc,
     fingerprints,
     possible_duplicates,
 )
@@ -61,6 +64,7 @@ from finboard.parsers.sdk import (
     is_pdf,
     open_document,
 )
+from finboard.services.categoriser import Categoriser, Decision
 from finboard.services.jobs import JobQueue, JobService
 from finboard.storage.blob import BlobNotFound, BlobStore, import_blob_key
 from finboard.storage.secrets import SecretStore
@@ -68,6 +72,7 @@ from finboard.storage.secrets import SecretStore
 log = structlog.get_logger(__name__)
 
 PARSE_TASK = "imports.process"
+TRANSFER_SUGGEST_TASK = "transfers.suggest"
 ARCHIVE_SETTING = "archive_statements"  # keep the original PDF after commit (OQ-5: default on)
 
 MSG_TIMEOUT = "Reading the statement took too long"
@@ -315,16 +320,17 @@ class ImportService:
                 )
             batch.recon_overridden = True
 
-        defaults = await self._default_categories()
+        # Rules may have changed since the preview: decide again, keeping the user's own choices.
+        categoriser = await Categoriser.load(self.uow)
         to_insert = [r for r in rows if r.include and r.duplicate_of is None]
         values = []
+        rule_by_fingerprint: dict[str, uuid.UUID] = {}
         for row in to_insert:
-            category_id, category_type, categorised_by = defaults[row.direction]
-            if row.category_id is not None:
-                category = await self.uow.categories.get(row.category_id)
-                if category is not None:
-                    category_id, category_type = category.id, category.type
-                    categorised_by = row.categorised_by or CategorisedBy.MANUAL
+            decision = self._manual_decision(categoriser, row) or categoriser.decide(
+                _facts(row, account.id), account.type
+            )
+            if decision.rule_id is not None and row.fingerprint:
+                rule_by_fingerprint[row.fingerprint] = decision.rule_id
             values.append(
                 {
                     "account_id": account.id,
@@ -336,17 +342,20 @@ class ImportService:
                     "amount": row.amount,
                     "direction": row.direction,
                     "balance_after": row.balance_after,
-                    "category_id": category_id,
-                    "type": category_type,
-                    "categorised_by": categorised_by,
-                    "rule_id": row.rule_id,
-                    "needs_review": categorised_by is CategorisedBy.DEFAULT,
+                    "category_id": decision.category_id,
+                    "type": decision.type,
+                    "categorised_by": decision.categorised_by,
+                    "rule_id": decision.rule_id,
+                    "needs_review": decision.needs_review,
                     "fingerprint": row.fingerprint,
                     "fingerprint_version": FINGERPRINT_VERSION,
                     "raw": row.raw,
                 }
             )
         inserted = await self.uow.txns.insert_new(values)
+        hits = Counter(rule_by_fingerprint[fp] for fp in inserted if fp in rule_by_fingerprint)
+        await self.uow.rules.add_hits(hits, _now())
+        await categoriser.record_timeouts(self.uow)
 
         # Everything this import saw (except rows the user excluded) goes into import_row, so a
         # later rollback of another import can hand shared rows over to this one.
@@ -370,10 +379,16 @@ class ImportService:
         if blob_to_delete:
             batch.blob_key = None
         await self.uow.users.bump_data_version(self.uow.user_id)
+        # New rows may complete transfers between the user's accounts (ARCHITECTURE §9).
+        pairing = await self.jobs.create(TRANSFER_SUGGEST_TASK) if inserted else None
         await self.uow.session.flush()
         await self.uow.commit()
         if blob_to_delete:
             await self.blobs.delete(blob_to_delete)
+        if pairing is not None:
+            # The commit stands if the queue is down; pairing runs after the next commit.
+            with contextlib.suppress(ServiceUnavailable):
+                await self.jobs.dispatch(pairing)
         log.info(
             "import.committed",
             import_id=str(batch.id),
@@ -598,9 +613,7 @@ class ImportService:
                 date=txn.date,
                 value_date=txn.value_date,
                 description_raw=txn.description,
-                # The categorisation normaliser arrives in M3; until then the frozen dedupe
-                # form stands in (both columns are rewritten by `rules.apply`).
-                description_norm=dedupe_desc(txn.description),
+                description_norm=normalise(txn.description),
                 amount=txn.amount,
                 direction=Direction(txn.direction),
                 balance_after=txn.balance_after,
@@ -625,6 +638,7 @@ class ImportService:
             batch.account_id = None
             batch.account_suggestion = _suggestion(batch, statement, self.registry)
             self._reconcile(batch, statement.balance_kind, rows)
+            await self._categorise_staged(rows, None)
         batch.status = ImportStatus.PARSED
         batch.expires_at = _now() + self.limits.staged_ttl
 
@@ -663,7 +677,34 @@ class ImportService:
                 row.include = True
         kind: BalanceKind = "liability" if account.type.is_liability else "asset"
         self._reconcile(batch, kind, rows)
+        await self._categorise_staged(rows, account)
         await self.uow.session.flush()
+
+    async def _categorise_staged(self, rows: Sequence[StagedRow], account: Account | None) -> None:
+        """Propose categories for the preview. Rows the user categorised keep their choice; a
+        row with no proposal (category_id NULL) goes to the fallback category at commit."""
+        categoriser = await Categoriser.load(self.uow)
+        for row in rows:
+            if row.categorised_by is CategorisedBy.MANUAL:
+                continue
+            decision = categoriser.decide(
+                _facts(row, account.id if account else None), account.type if account else None
+            )
+            if decision.needs_review:
+                row.category_id, row.rule_id, row.categorised_by = None, None, None
+            else:
+                row.category_id, row.rule_id = decision.category_id, decision.rule_id
+                row.categorised_by = decision.categorised_by
+        await categoriser.record_timeouts(self.uow)
+
+    @staticmethod
+    def _manual_decision(categoriser: Categoriser, row: StagedRow) -> Decision | None:
+        if row.categorised_by is not CategorisedBy.MANUAL or row.category_id is None:
+            return None
+        category = categoriser.category(row.category_id)
+        if category is None:
+            return None
+        return Decision(category.id, category.type, CategorisedBy.MANUAL, None, False)
 
     @staticmethod
     def _reconcile(batch: ImportBatch, kind: BalanceKind, rows: Sequence[StagedRow]) -> None:
@@ -740,22 +781,6 @@ class ImportService:
             )
         )
 
-    async def _default_categories(
-        self,
-    ) -> dict[Direction, tuple[uuid.UUID, Any, CategorisedBy]]:
-        """Until rules exist (M3), debits go to Uncategorized and credits to Uncategorized
-        income, flagged for review."""
-        result: dict[Direction, tuple[uuid.UUID, Any, CategorisedBy]] = {}
-        for direction, key in (
-            (Direction.DEBIT, "uncategorized"),
-            (Direction.CREDIT, "uncategorized_income"),
-        ):
-            category = await self.uow.categories.by_system_key(key)
-            if category is None:
-                raise Conflict(f"The system category '{key}' is missing")
-            result[direction] = (category.id, category.type, CategorisedBy.DEFAULT)
-        return result
-
 
 # ---------------------------------------------------------------- module helpers
 
@@ -790,6 +815,10 @@ def _suggestion(
         "institution": statement.institution[:80],
         "masked_number": hint,
     }
+
+
+def _facts(row: StagedRow, account_id: uuid.UUID | None) -> TxnFacts:
+    return TxnFacts(row.description_norm, row.direction.value, row.amount, account_id)
 
 
 def _counts(rows: Sequence[StagedRow]) -> dict[str, int]:
