@@ -277,7 +277,7 @@ Inserts use `INSERT … ON CONFLICT (user_id, fingerprint) DO NOTHING RETURNING 
 | `parse` | `imports.process(import_id)` — decrypt, detect, parse, reconcile, match, dedupe, categorise, stage | prefork, concurrency = CPU cores, **`soft_time_limit=60`, `time_limit=75`** (hard kill of a hung parse), `max_tasks_per_child=50`, `max_memory_per_child=512MB` |
 | `default` | `rules.apply`, `transfers.suggest`, `data.export`, `data.import`, `data.delete_user_data` | prefork, concurrency 2–4 |
 | `ai` (optional) | `ai.embed(txn_ids)`, `ai.embed_all()` | concurrency 1; the embedding model is loaded once per process |
-| beat | `maintenance.expire_staged` (hourly), `maintenance.requeue_stale` (5 min), `maintenance.purge_jobs` (daily) | single instance |
+| beat | `maintenance.expire_staged` (hourly), `maintenance.requeue_stale` (5 min), `maintenance.purge_jobs` (daily); `finboard beat` | single instance. Each task works **one user at a time under that user's RLS**, not as a cross-user role ([ADR-0037](adr/0037-data-and-housekeeping-as-built.md)) |
 
 Conventions:
 - **Tasks are thin.** A task loads ids from its args and calls an async service through `jobs/runtime.py`. That module keeps **one event loop and one async engine per worker process**, created in `worker_process_init`. API and workers share the same service code.
@@ -465,12 +465,12 @@ Base `/api/v1`. Money is a decimal string, dates are `YYYY-MM-DD`, months are `Y
 | Rules | CRUD `/rules` · `POST /rules/reorder {ids}` · `POST /rules/test` · `POST /rules/apply {scope, include_manual, dry_run}` → 202 · `GET /rules/export?format=yaml\|json` · `POST /rules/import {content, mode}` · `POST /rules/starter-pack` |
 | Categories | CRUD · `POST /categories/{id}/merge {into_id}` |
 | Accounts | CRUD (delete only if no transactions; otherwise archive) |
-| Budgets | `GET /budgets?month=` · `PUT /budgets/{category_id} {effective_from, monthly_limit\|null}` |
+| Budgets | `GET /budgets?month=` · `GET /budgets/history?category_id=` · `PUT /budgets/{category_id} {effective_from, monthly_limit\|null}` · `DELETE /budgets/{category_id}/{month}` (undo a change) |
 | Parsers | `GET /parsers` (installed + load failures + my settings) · `PATCH /parsers/{id} {enabled?, options?}` |
 | Dashboard | `GET /dashboard/months` · `GET /dashboard?month=&trail=12` · `GET /dashboard/widgets` · `DELETE /dashboard/widgets/{id}` |
 | AI (optional, §18) | `GET /transactions/{id}/suggestions` · `POST /ask {question}` · `GET /ask/history` · `DELETE /ask/history/{id}` · `POST /ask/{id}/pin` |
 | Settings | `GET /settings` · `PATCH /settings` |
-| Data | `POST /data/export` → 202 (zip of my data + archived PDFs) · `GET /data/exports/{id}` (download) · `POST /data/import` → 202 · `GET /data/transactions.csv` · `POST /data/delete-all {confirm:"DELETE ALL"}` → 202 |
+| Data | `POST /data/export` → 202 (zip of my data + archived PDFs) · `GET /data/exports/{job_id}` (download) · `POST /data/import` (multipart zip) → 202 · `GET /data/transactions.csv` · `POST /data/delete-all {confirm:"DELETE ALL"}` → 202. Format, validation and id handling: [ADR-0037](adr/0037-data-and-housekeeping-as-built.md) |
 
 ```ts
 type Money = string;  type Id = string;            // UUID
@@ -637,7 +637,7 @@ The OS matrix covers what contributors run natively (parsers, frontend). The ser
 | Seed demo data | `uv run finboard demo-data` | synthetic accounts, imports and transactions mirroring `docs/handover/design/` |
 | Utilities | `finboard migrate` · `finboard create-user` (server mode) · `finboard parsers list` · `finboard export --user local` | |
 
-Upgrades: `docker compose pull && up -d`. Before migrating, the api writes a `pg_dump` to the backups volume.
+Upgrades: `docker compose pull && up -d`. Before migrating an older schema, `finboard serve` writes a `pg_dump -Fc` to `FINBOARD_BACKUP_DIR` (the backups volume); a failed dump stops the migration, a missing `pg_dump` only warns ([ADR-0037](adr/0037-data-and-housekeeping-as-built.md)).
 
 ---
 

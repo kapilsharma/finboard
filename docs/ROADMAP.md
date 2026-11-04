@@ -141,7 +141,13 @@ flowchart LR
 | `FINBOARD_AI_ASK=off`, or the user hasn't opted in → `/ask` returns 404 and the panel is hidden | `test_ask.py`, Vitest |
 | Live eval: spec-path execution accuracy ≥ 80 %, SQL path reported separately | `finboard ai eval` (manual; results committed to `docs/ai-eval.md`) |
 
-## M5 — Settings polish & data
+## M5 — Settings polish & data ✅ (2026-11-04)
+*Done: 442 backend tests + 92 frontend tests + 9 Playwright tests (incl. axe and 400 px on the new tabs); ruff, mypy strict, import-linter, oxlint, tsc clean. Deviations ([ADR-0037](adr/0037-data-and-housekeeping-as-built.md)):*
+- *Housekeeping runs one user at a time under RLS, not as a cross-user maintenance role.*
+- *Import keeps ids (so restored fingerprints still dedupe) and only goes into an empty Finboard; restoring into a second user of the same database isn't supported.*
+- *`finboard serve` backs up with `pg_dump` only when the schema is behind; a missing `pg_dump` warns, a failing one stops the migration.*
+- *Settings › System became part of Settings › Data.*
+
 **Scope:** Budgets tab (effective-from), category merge, parser enable/options per user, Preferences, `data.export`/`data.import` jobs (per-user logical export: JSON + archived PDFs zip), CSV export, `data.delete_user_data`, staged-import expiry (beat), pre-migration `pg_dump`.
 
 | Acceptance criterion | Proven by |
@@ -151,6 +157,8 @@ flowchart LR
 | Export → delete-all → import gives an identical dataset (counts + checksums) | `tests/integration/test_export_import.py` |
 | Malicious import zip (traversal, extra members, newer version) rejected | `test_export_import.py::test_rejects_*` |
 | Delete-all removes only the caller's rows and blobs | `tests/integration/tenancy/test_delete_all.py` |
+| Housekeeping: expiry, stale jobs, purge; beat schedule; pre-migration backup | `tests/integration/test_maintenance.py`, `tests/unit/test_backup.py` |
+| Parser enable/options per user reach detection and `parse()` | `tests/integration/test_parser_settings.py` |
 
 ## M6 — Remaining bank adapters (parallel after M2)
 **Scope, in order:** `icici_savings_pdf` (issue #9, moved from M2) → `icici_cc_pdf` (second, because it exercises the liability/reconciliation path early) → `kotak_savings_pdf` → `hsbc_savings_pdf` → `yes_savings_pdf` → `csb_savings_pdf` (order confirmed by owner). Optional later: `hdfc_home_loan_pdf`, LIC premium statement, MF CAS (v2). These are not needed for correct metrics; see ARCHITECTURE §9. Each has a layout-only synthetic fixture builder. The owner validates locally on real statements, which never enter the repo. `CONTRIBUTING.md › How to add your bank` and the `_template` adapter landed early, in M2.
