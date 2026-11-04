@@ -52,6 +52,7 @@ def cmd_serve(args: argparse.Namespace) -> None:
         port=args.port or settings.port,
         log_config=None,
         proxy_headers=False,
+        workers=args.workers,
     )
 
 
@@ -252,6 +253,9 @@ def main(argv: list[str] | None = None) -> None:
     serve.add_argument("--host")
     serve.add_argument("--port", type=int)
     serve.add_argument("--no-migrate", action="store_true")
+    serve.add_argument(
+        "--workers", type=int, default=1, help="API processes (stateless, ARCHITECTURE §14)"
+    )
     serve.set_defaults(func=cmd_serve)
 
     worker = sub.add_parser("worker", help="run a background worker")

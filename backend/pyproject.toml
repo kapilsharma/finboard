@@ -49,6 +49,8 @@ dev = [
     "types-pyyaml>=6.0.12.20261103",
     "types-regex>=2026.9.29.20261030",
 ]
+# Manual load test (tests/load): `uv run --group load locust ...`. Not installed by default.
+load = ["locust>=2.32"]
 
 [build-system]
 requires = ["hatchling>=1.25"]

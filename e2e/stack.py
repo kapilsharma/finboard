@@ -1,6 +1,6 @@
 """Start the app for end-to-end tests: `finboard serve` (API + built SPA) and a worker.
 
-Playwright runs this as its web server. It uses the `finboard_test` database (emptied first),
+Playwright runs this as its web server. It uses the `finboard_test` database (emptied first, then given the demo data),
 Redis database 14 and a throwaway blob directory, so it never touches your real data.
 Needs Postgres + Redis from deploy/compose.dev.yaml and a built SPA (`npm run build` in
 frontend/).
@@ -48,6 +48,25 @@ async def main():
 asyncio.run(main())
 """
 
+# The local user with the handover's synthetic demo data (finboard demo-data), so the
+# dashboard tests have the approved mockup's numbers to check.
+DEMO = """
+import asyncio, os
+from finboard.core.config import get_settings
+from finboard.db.engine import create_engine, create_sessionmaker
+from finboard.db.uow import unit_of_work
+from finboard.services.demo import load_demo
+from finboard.services.users import ensure_local_user
+async def main():
+    engine = create_engine(get_settings())
+    sessionmaker = create_sessionmaker(engine)
+    principal = await ensure_local_user(sessionmaker)
+    async with unit_of_work(sessionmaker, principal.user_id) as uow:
+        await load_demo(uow)
+    await engine.dispose()
+asyncio.run(main())
+"""
+
 
 def uv(*args: str) -> list[str]:
     exe = shutil.which("uv")
@@ -58,6 +77,7 @@ def uv(*args: str) -> list[str]:
 
 def main() -> None:
     subprocess.run(uv("python", "-c", RESET), env=ENV, cwd=BACKEND, check=True)  # noqa: S603
+    subprocess.run(uv("python", "-c", DEMO), env=ENV, cwd=BACKEND, check=True)  # noqa: S603
     procs = [
         subprocess.Popen(  # noqa: S603
             uv("finboard", "serve", "--no-migrate", "--port", PORT), env=ENV, cwd=BACKEND
