@@ -16,7 +16,8 @@ export function mockApi(handlers: Record<string, Handler>) {
     const path = url.replace('/api/v1', '')
     const body = typeof init.body === 'string' ? JSON.parse(init.body) : undefined
     calls.push({ method, path, body, headers: (init.headers ?? {}) as Record<string, string> })
-    const handler = handlers[`${method} ${path}`]
+    // Exact match first (path with query string), then the path alone.
+    const handler = handlers[`${method} ${path}`] ?? handlers[`${method} ${path.split('?')[0]}`]
     if (!handler) {
       return new Response(JSON.stringify({ status: 404, code: 'not_found', title: 'Not found' }), {
         status: 404,

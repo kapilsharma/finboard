@@ -14,6 +14,34 @@ export type CategoryType = Schemas['CategoryType']
 export type Job = Schemas['JobOut']
 export type Preferences = Schemas['Preferences']
 export type Theme = Schemas['Theme']
+export type ImportResource = Schemas['ImportOut']
+export type ImportStatus = Schemas['ImportStatus']
+export type ImportList = Schemas['ImportList']
+export type StagedRow = Schemas['StagedRowOut']
+export type AccountDraft = Schemas['AccountDraft']
+export type CommitBody = Schemas['CommitIn']
+export type ReparseBody = Schemas['ReparseIn']
+export type Parser = Schemas['ParserOut']
+export type ParserList = Schemas['ParserList']
+
+/** Statuses during which the server is still working on an import. */
+export const IMPORT_IN_FLIGHT: ReadonlySet<ImportStatus> = new Set([
+  'uploaded',
+  'queued',
+  'processing',
+])
+
+export const IMPORT_STATUS_LABELS: Record<ImportStatus, string> = {
+  uploaded: 'Waiting',
+  queued: 'Queued',
+  processing: 'Reading',
+  needs_password: 'Needs password',
+  parsed: 'Ready to review',
+  committed: 'Imported',
+  rolled_back: 'Rolled back',
+  discarded: 'Discarded',
+  failed: 'Failed',
+}
 
 export const ACCOUNT_TYPE_LABELS: Record<AccountType, string> = {
   savings: 'Savings',

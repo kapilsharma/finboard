@@ -2,14 +2,18 @@ import { NavLink, Navigate, useParams } from 'react-router'
 import { PageHeader } from '../../components/ui'
 import { AccountsTab } from './AccountsTab'
 import { CategoriesTab } from './CategoriesTab'
+import { ImportHistoryTab } from './ImportHistoryTab'
+import { ParsersTab } from './ParsersTab'
 import { PreferencesTab } from './PreferencesTab'
 import { SystemTab } from './SystemTab'
 import styles from './settings.module.css'
 
-// Rules, Budgets, Parsers, Import history and Data join in later milestones.
+// Rules, Budgets and Data join in later milestones.
 const TABS = [
   { id: 'accounts', label: 'Accounts', element: <AccountsTab /> },
   { id: 'categories', label: 'Categories', element: <CategoriesTab /> },
+  { id: 'parsers', label: 'Parsers', element: <ParsersTab /> },
+  { id: 'imports', label: 'Import history', element: <ImportHistoryTab /> },
   { id: 'preferences', label: 'Preferences', element: <PreferencesTab /> },
   { id: 'system', label: 'System', element: <SystemTab /> },
 ] as const

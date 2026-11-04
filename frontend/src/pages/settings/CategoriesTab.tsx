@@ -138,8 +138,12 @@ function CategoryRow({ category, isChild }: { category: Category; isChild: boole
       </td>
       <td className={styles.actions}>
         {!editing && (
-          <button className="link" onClick={() => setEditing(true)}>
-            Rename<span className="visually-hidden"> {category.name}</span>
+          <button
+            className="link"
+            onClick={() => setEditing(true)}
+            aria-label={`Rename ${category.name}`}
+          >
+            Rename
           </button>
         )}
         {!category.is_system && (
@@ -150,8 +154,9 @@ function CategoryRow({ category, isChild }: { category: Category; isChild: boole
               if (window.confirm(`Delete the category “${category.name}”?`))
                 remove.mutate(category.id)
             }}
+            aria-label={`Delete ${category.name}`}
           >
-            Delete<span className="visually-hidden"> {category.name}</span>
+            Delete
           </button>
         )}
       </td>

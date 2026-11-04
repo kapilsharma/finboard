@@ -223,6 +223,174 @@ export interface paths {
     patch: operations['update_preferences_api_v1_settings_patch']
     trace?: never
   }
+  '/api/v1/imports': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /**
+     * List Imports
+     * @description Import history, newest first (no rows). `cursor` is the `next_cursor` of the last page.
+     */
+    get: operations['list_imports_api_v1_imports_get']
+    put?: never
+    /**
+     * Create Import
+     * @description Upload one statement (multipart field `file`). One import per file; send several
+     *     requests for several files. Retries with the same `Idempotency-Key` create one import.
+     */
+    post: operations['create_import_api_v1_imports_post']
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/api/v1/imports/{import_id}': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /**
+     * Get Import
+     * @description Status, and the preview rows once parsed.
+     */
+    get: operations['get_import_api_v1_imports__import_id__get']
+    put?: never
+    post?: never
+    /**
+     * Discard Import
+     * @description Discard a not-yet-committed import: its preview rows and the stored file are deleted.
+     */
+    delete: operations['discard_import_api_v1_imports__import_id__delete']
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/api/v1/imports/{import_id}/unlock': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    put?: never
+    /**
+     * Unlock Import
+     * @description Send the statement password. It is never stored: it reaches the worker through a
+     *     single-use, encrypted, 120-second handoff (ADR-0027).
+     */
+    post: operations['unlock_import_api_v1_imports__import_id__unlock_post']
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/api/v1/imports/{import_id}/reparse': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    put?: never
+    /**
+     * Reparse Import
+     * @description Choose a different parser and/or account. An account change alone applies at once.
+     */
+    post: operations['reparse_import_api_v1_imports__import_id__reparse_post']
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/api/v1/imports/{import_id}/rows/{seq}': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    put?: never
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    /** Update Staged Row */
+    patch: operations['update_staged_row_api_v1_imports__import_id__rows__seq__patch']
+    trace?: never
+  }
+  '/api/v1/imports/{import_id}/commit': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    put?: never
+    /**
+     * Commit Import
+     * @description Write the preview's included rows as transactions. A reconciliation mismatch blocks
+     *     this unless `override_reconciliation` is set (and the override is recorded).
+     */
+    post: operations['commit_import_api_v1_imports__import_id__commit_post']
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/api/v1/imports/{import_id}/rollback': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    put?: never
+    /**
+     * Rollback Import
+     * @description Undo a commit. Rows another committed import also contains are kept (moved to it).
+     */
+    post: operations['rollback_import_api_v1_imports__import_id__rollback_post']
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/api/v1/parsers': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /**
+     * List Parsers
+     * @description Installed parsers, plus any that failed to load and why (ADR-0009).
+     */
+    get: operations['list_parsers_api_v1_parsers_get']
+    put?: never
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
 }
 export type webhooks = Record<string, never>
 export interface components {
@@ -245,6 +413,16 @@ export interface components {
       active: boolean
       /** Colour */
       colour?: string | null
+    }
+    /** AccountDraft */
+    AccountDraft: {
+      /** Name */
+      name: string
+      type: components['schemas']['AccountType']
+      /** Institution */
+      institution?: string | null
+      /** Masked Number */
+      masked_number?: string | null
     }
     /** AccountList */
     AccountList: {
@@ -284,6 +462,23 @@ export interface components {
        */
       updated_at: string
     }
+    /** AccountRef */
+    AccountRef: {
+      /**
+       * Id
+       * Format: uuid
+       */
+      id: string
+      /** Name */
+      name: string
+      type: components['schemas']['AccountType']
+      /** Masked Number */
+      masked_number: string | null
+    }
+    /** AccountSuggestion */
+    AccountSuggestion: {
+      create: components['schemas']['AccountDraft']
+    }
     /**
      * AccountType
      * @enum {string}
@@ -313,6 +508,21 @@ export interface components {
       /** Colour */
       colour?: string | null
     }
+    /** AlreadyImported */
+    AlreadyImported: {
+      /**
+       * Import Id
+       * Format: uuid
+       */
+      import_id: string
+      /** Committed At */
+      committed_at: string | null
+    }
+    /**
+     * CategorisedBy
+     * @enum {string}
+     */
+    CategorisedBy: 'rule' | 'manual' | 'default' | 'transfer'
     /** CategoryCreate */
     CategoryCreate: {
       /** Name */
@@ -370,6 +580,29 @@ export interface components {
       /** Archived */
       archived?: boolean | null
     }
+    /** CommitIn */
+    CommitIn: {
+      /**
+       * Override Reconciliation
+       * @default false
+       */
+      override_reconciliation: boolean
+      create_account?: components['schemas']['AccountDraft'] | null
+    }
+    /** CommitResult */
+    CommitResult: {
+      /** Inserted */
+      inserted: number
+      /** Skipped */
+      skipped: number
+      /** Excluded */
+      excluded: number
+    }
+    /**
+     * Direction
+     * @enum {string}
+     */
+    Direction: 'debit' | 'credit'
     /** HTTPValidationError */
     HTTPValidationError: {
       /** Detail */
@@ -387,6 +620,97 @@ export interface components {
         [key: string]: string
       }
     }
+    /** ImportCounts */
+    ImportCounts: {
+      /** Parsed */
+      parsed: number
+      /** New */
+      new: number
+      /** Duplicate */
+      duplicate: number
+      /** Excluded */
+      excluded: number
+      /** Possible Duplicate */
+      possible_duplicate: number
+      /** Needs Review */
+      needs_review: number
+    }
+    /** ImportList */
+    ImportList: {
+      /** Items */
+      items: components['schemas']['ImportOut'][]
+      /** Next Cursor */
+      next_cursor: string | null
+    }
+    /** ImportOut */
+    ImportOut: {
+      /**
+       * Id
+       * Format: uuid
+       */
+      id: string
+      status: components['schemas']['ImportStatus']
+      source: components['schemas']['ImportSource']
+      /** File Name */
+      file_name: string
+      /** File Size */
+      file_size: number
+      /** Encrypted */
+      encrypted: boolean
+      /** Archived */
+      archived: boolean
+      /**
+       * Created At
+       * Format: date-time
+       */
+      created_at: string
+      /** Committed At */
+      committed_at: string | null
+      /** Rolled Back At */
+      rolled_back_at: string | null
+      /** Error */
+      error: string | null
+      job: components['schemas']['JobOut'] | null
+      parser: components['schemas']['ParserRef'] | null
+      /** Candidates */
+      candidates: components['schemas']['ParserCandidate'][]
+      /** Institution */
+      institution: string | null
+      account: components['schemas']['AccountRef'] | null
+      account_suggestion: components['schemas']['AccountSuggestion'] | null
+      period: components['schemas']['Period'] | null
+      /** Opening */
+      opening: string | null
+      /** Closing */
+      closing: string | null
+      reconciliation: components['schemas']['Reconciliation'] | null
+      counts: components['schemas']['ImportCounts'] | null
+      result: components['schemas']['CommitResult'] | null
+      /** Rows */
+      rows?: components['schemas']['StagedRowOut'][] | null
+      /** Warnings */
+      warnings: string[]
+      file_already_imported: components['schemas']['AlreadyImported'] | null
+    }
+    /**
+     * ImportSource
+     * @enum {string}
+     */
+    ImportSource: 'upload' | 'watcher'
+    /**
+     * ImportStatus
+     * @enum {string}
+     */
+    ImportStatus:
+      | 'uploaded'
+      | 'queued'
+      | 'processing'
+      | 'needs_password'
+      | 'parsed'
+      | 'committed'
+      | 'rolled_back'
+      | 'discarded'
+      | 'failed'
     /** JobList */
     JobList: {
       /** Items */
@@ -448,6 +772,62 @@ export interface components {
       /** Mode */
       mode: string
     }
+    /** ParserCandidate */
+    ParserCandidate: {
+      /** Id */
+      id: string
+      /** Name */
+      name: string
+      /** Confidence */
+      confidence: number
+    }
+    /** ParserList */
+    ParserList: {
+      /** Items */
+      items: components['schemas']['ParserOut'][]
+      /** Failures */
+      failures: components['schemas']['ParserLoadFailure'][]
+    }
+    /** ParserLoadFailure */
+    ParserLoadFailure: {
+      /** Source */
+      source: string
+      /** Reason */
+      reason: string
+    }
+    /** ParserOut */
+    ParserOut: {
+      /** Id */
+      id: string
+      /** Name */
+      name: string
+      /** Version */
+      version: string
+      /** Institutions */
+      institutions: string[]
+      /** Account Types */
+      account_types: string[]
+      /** File Types */
+      file_types: string[]
+      /** Fallback */
+      fallback: boolean
+    }
+    /** ParserRef */
+    ParserRef: {
+      /** Id */
+      id: string
+      /** Version */
+      version: string | null
+      /** Confidence */
+      confidence: number | null
+    }
+    /** Period */
+    Period: {
+      /** Start */
+      start: string | null
+      /** End */
+      end: string | null
+    }
     /** Preferences */
     Preferences: {
       theme: components['schemas']['Theme']
@@ -457,10 +837,86 @@ export interface components {
       theme?: components['schemas']['Theme'] | null
     }
     /**
+     * ReconStatus
+     * @enum {string}
+     */
+    ReconStatus: 'ok' | 'mismatch' | 'unverifiable'
+    /** Reconciliation */
+    Reconciliation: {
+      status: components['schemas']['ReconStatus']
+      /** Balance Kind */
+      balance_kind: string | null
+      /** Credits */
+      credits: string | null
+      /** Debits */
+      debits: string | null
+      /** Expected Closing */
+      expected_closing: string | null
+      /** Diff */
+      diff: string | null
+      /** First Break Seq */
+      first_break_seq: number | null
+      /** Overridden */
+      overridden: boolean
+    }
+    /** ReparseIn */
+    ReparseIn: {
+      /** Parser Id */
+      parser_id?: string | null
+      /** Account Id */
+      account_id?: string | null
+    }
+    /** StagedRowOut */
+    StagedRowOut: {
+      /** Seq */
+      seq: number
+      /**
+       * Date
+       * Format: date
+       */
+      date: string
+      /** Value Date */
+      value_date: string | null
+      /** Description */
+      description: string
+      /**
+       * Amount
+       * @example 2350.00
+       */
+      amount: string
+      direction: components['schemas']['Direction']
+      /** Balance After */
+      balance_after: string | null
+      /** Include */
+      include: boolean
+      /** Duplicate */
+      duplicate: boolean
+      /** Possible Duplicate */
+      possible_duplicate: boolean
+      /** Category Id */
+      category_id: string | null
+      categorised_by: components['schemas']['CategorisedBy'] | null
+    }
+    /** StagedRowUpdate */
+    StagedRowUpdate: {
+      /** Include */
+      include?: boolean | null
+      /** Category Id */
+      category_id?: string | null
+    }
+    /**
      * Theme
      * @enum {string}
      */
     Theme: 'system' | 'light' | 'dark'
+    /** UnlockIn */
+    UnlockIn: {
+      /**
+       * Password
+       * Format: password
+       */
+      password: string
+    }
     /** ValidationError */
     ValidationError: {
       /** Location */
@@ -957,6 +1413,338 @@ export interface operations {
         }
         content: {
           'application/json': components['schemas']['HTTPValidationError']
+        }
+      }
+    }
+  }
+  list_imports_api_v1_imports_get: {
+    parameters: {
+      query?: {
+        status?: components['schemas']['ImportStatus'][] | null
+        cursor?: string | null
+        limit?: number
+      }
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ImportList']
+        }
+      }
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['HTTPValidationError']
+        }
+      }
+    }
+  }
+  create_import_api_v1_imports_post: {
+    parameters: {
+      query?: never
+      header?: {
+        'Idempotency-Key'?: string | null
+      }
+      path?: never
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        'multipart/form-data': {
+          /** Format: binary */
+          file: string
+        }
+      }
+    }
+    responses: {
+      /** @description Successful Response */
+      202: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ImportOut']
+        }
+      }
+      /** @description File too large */
+      413: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['HTTPValidationError']
+        }
+      }
+    }
+  }
+  get_import_api_v1_imports__import_id__get: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        import_id: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ImportOut']
+        }
+      }
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['HTTPValidationError']
+        }
+      }
+    }
+  }
+  discard_import_api_v1_imports__import_id__delete: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        import_id: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      /** @description Successful Response */
+      204: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['HTTPValidationError']
+        }
+      }
+    }
+  }
+  unlock_import_api_v1_imports__import_id__unlock_post: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        import_id: string
+      }
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['UnlockIn']
+      }
+    }
+    responses: {
+      /** @description Successful Response */
+      202: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ImportOut']
+        }
+      }
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['HTTPValidationError']
+        }
+      }
+    }
+  }
+  reparse_import_api_v1_imports__import_id__reparse_post: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        import_id: string
+      }
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['ReparseIn']
+      }
+    }
+    responses: {
+      /** @description Successful Response */
+      202: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ImportOut']
+        }
+      }
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['HTTPValidationError']
+        }
+      }
+    }
+  }
+  update_staged_row_api_v1_imports__import_id__rows__seq__patch: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        import_id: string
+        seq: number
+      }
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['StagedRowUpdate']
+      }
+    }
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ImportOut']
+        }
+      }
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['HTTPValidationError']
+        }
+      }
+    }
+  }
+  commit_import_api_v1_imports__import_id__commit_post: {
+    parameters: {
+      query?: never
+      header?: {
+        'Idempotency-Key'?: string | null
+      }
+      path: {
+        import_id: string
+      }
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['CommitIn']
+      }
+    }
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ImportOut']
+        }
+      }
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['HTTPValidationError']
+        }
+      }
+    }
+  }
+  rollback_import_api_v1_imports__import_id__rollback_post: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        import_id: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ImportOut']
+        }
+      }
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['HTTPValidationError']
+        }
+      }
+    }
+  }
+  list_parsers_api_v1_parsers_get: {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ParserList']
         }
       }
     }

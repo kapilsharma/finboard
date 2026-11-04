@@ -27,3 +27,9 @@
   margin: 0 0 var(--space-2);
   color: var(--text-muted);
 }
+
+@media (max-width: 600px) {
+  .card {
+    padding: var(--space-3);
+  }
+}
