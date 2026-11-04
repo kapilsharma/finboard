@@ -51,6 +51,9 @@ class Settings(BaseSettings):
     # Uploaded statements, still bank-encrypted (ADR-0026). Relative paths resolve against
     # the working directory, which is backend/ for `finboard dev`.
     blob_dir: Path = Path(".devdata/blobs")
+    # `finboard serve` writes a pg_dump here before it migrates an older schema (§16).
+    backup_dir: Path = Path(".devdata/backups")
+    backup_before_migrate: bool = True
 
     # Import limits (ARCHITECTURE §7).
     max_upload_bytes: int = 20 * 1024 * 1024

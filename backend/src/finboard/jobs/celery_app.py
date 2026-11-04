@@ -27,6 +27,12 @@ def create_celery(settings: Settings) -> Celery:
         broker_connection_retry_on_startup=True,
         worker_hijack_root_logger=False,
         timezone="UTC",
+        # Housekeeping (ARCHITECTURE §6), run by a single `finboard beat`.
+        beat_schedule={
+            "expire-staged": {"task": "maintenance.expire_staged", "schedule": 3600.0},
+            "requeue-stale": {"task": "maintenance.requeue_stale", "schedule": 300.0},
+            "purge-jobs": {"task": "maintenance.purge_jobs", "schedule": 86400.0},
+        },
     )
     return app
 

@@ -19,6 +19,13 @@ async def provision_user(uow: UnitOfWork, *, username: str, display_name: str) -
     commits."""
     user = await uow.users.add(AppUser(username=username, display_name=display_name))
     await uow.bind_user(user.id)
+    await seed_defaults(uow)
+    return user
+
+
+async def seed_defaults(uow: UnitOfWork) -> None:
+    """The default categories and the starter rule pack for the unit of work's user (a new
+    user, or one whose data was just deleted). The caller commits."""
     categories = [
         Category(
             name=seed.name,
@@ -44,7 +51,6 @@ async def provision_user(uow: UnitOfWork, *, username: str, display_name: str) -
             for index, seed in enumerate(STARTER_RULES)
         ]
     )
-    return user
 
 
 async def ensure_local_user(sessionmaker: async_sessionmaker[AsyncSession]) -> Principal:

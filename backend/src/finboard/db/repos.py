@@ -9,9 +9,10 @@ from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date, datetime
 from decimal import Decimal
-from typing import Any
+from typing import Any, cast
 
 from sqlalchemy import (
+    Table,
     bindparam,
     delete,
     exists,
@@ -25,6 +26,7 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from finboard.db.base import Base
 from finboard.db.models import (
     Account,
     AppUser,
@@ -47,6 +49,7 @@ from finboard.domain.enums import (
     Direction,
     ImportRowOutcome,
     ImportStatus,
+    JobStatus,
     TransferStatus,
 )
 
@@ -66,6 +69,10 @@ class UserRepo:
         self.session.add(user)
         await self.session.flush()
         return user
+
+    async def all_ids(self) -> list[uuid.UUID]:
+        """Every user (app_user has no row-level security: it holds no financial data)."""
+        return list((await self.session.scalars(select(AppUser.id).order_by(AppUser.id))).all())
 
     async def bump_data_version(self, user_id: uuid.UUID) -> None:
         """Invalidate cached views of the user's financial data (dashboard ETag)."""
@@ -260,6 +267,26 @@ class JobRepo(_UserScoped):
         )
         return (await self.session.scalars(stmt)).all()
 
+    async def stale_queued(self, before: datetime) -> list[Job]:
+        stmt = select(Job).where(
+            Job.user_id == self.user_id, Job.status == JobStatus.QUEUED, Job.created_at < before
+        )
+        return list((await self.session.scalars(stmt.with_for_update(skip_locked=True))).all())
+
+    async def finished_before(self, before: datetime) -> list[Job]:
+        stmt = select(Job).where(
+            Job.user_id == self.user_id,
+            Job.status.in_((JobStatus.SUCCEEDED, JobStatus.FAILED, JobStatus.CANCELLED)),
+            Job.finished_at < before,
+        )
+        return list((await self.session.scalars(stmt)).all())
+
+    async def delete_ids(self, ids: Sequence[uuid.UUID]) -> None:
+        if ids:
+            await self.session.execute(
+                delete(Job).where(Job.user_id == self.user_id, Job.id.in_(ids))
+            )
+
     async def add(self, job: Job) -> Job:
         job.user_id = self.user_id
         self.session.add(job)
@@ -350,6 +377,21 @@ class ImportRepo(_UserScoped):
         if for_update:
             stmt = stmt.with_for_update()
         return (await self.session.execute(stmt)).scalar_one_or_none()
+
+    async def expired(self, now: datetime) -> Sequence[ImportBatch]:
+        """Staged imports past their expiry: never committed, not being worked on."""
+        stmt = (
+            select(ImportBatch)
+            .where(
+                ImportBatch.user_id == self.user_id,
+                ImportBatch.expires_at < now,
+                ImportBatch.status.in_(
+                    (ImportStatus.PARSED, ImportStatus.NEEDS_PASSWORD, ImportStatus.FAILED)
+                ),
+            )
+            .with_for_update(skip_locked=True)
+        )
+        return (await self.session.scalars(stmt)).all()
 
     async def lock_parse_slots(self) -> None:
         """Serialise "is there a free parse slot?" decisions for this user (transaction-scoped)."""
@@ -1016,3 +1058,46 @@ class ParserSettingRepo(_UserScoped):
             set_={"enabled": enabled, "options": options, "updated_at": func.now()},
         )
         await self.session.execute(stmt)
+
+
+# ---------------------------------------------------------------- data export / import / delete
+
+
+def _table(model: type[Base]) -> Table:
+    return cast(Table, model.__table__)
+
+
+class DataRepo(_UserScoped):
+    """Whole-table operations on one user's rows, for export, import and delete-all."""
+
+    async def dump(self, model: type[Base]) -> list[dict[str, Any]]:
+        table = _table(model)
+        columns = [c for c in table.columns if c.name != "user_id"]
+        order = [c for c in table.primary_key.columns if c.name != "user_id"]
+        stmt = select(*columns).where(table.c.user_id == self.user_id).order_by(*order)
+        return [dict(row._mapping) for row in await self.session.execute(stmt)]
+
+    async def insert(self, model: type[Base], rows: Sequence[Mapping[str, Any]]) -> None:
+        table = _table(model)
+        for start in range(0, len(rows), 1000):
+            chunk = [{**row, "user_id": self.user_id} for row in rows[start : start + 1000]]
+            if chunk:
+                await self.session.execute(insert(table).values(chunk))
+
+    async def delete(self, model: type[Base], *, keep_ids: Sequence[uuid.UUID] = ()) -> int:
+        table = _table(model)
+        stmt = delete(table).where(table.c.user_id == self.user_id)
+        if keep_ids:
+            stmt = stmt.where(table.c.id.not_in(keep_ids))
+        return int((await self.session.execute(stmt)).rowcount or 0)  # type: ignore[attr-defined]
+
+    async def has_financial_data(self) -> bool:
+        """Accounts, transactions or imports (categories and rules alone don't count)."""
+        for model in (Account, Txn, ImportBatch):
+            table = _table(model)
+            found = await self.session.scalar(
+                select(exists().where(table.c.user_id == self.user_id))
+            )
+            if found:
+                return True
+        return False

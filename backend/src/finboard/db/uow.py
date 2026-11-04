@@ -17,6 +17,7 @@ from finboard.db.repos import (
     BudgetRepo,
     CategoryRepo,
     DashboardRepo,
+    DataRepo,
     ImportRepo,
     ImportRowRepo,
     JobRepo,
@@ -89,6 +90,10 @@ class UnitOfWork:
     @property
     def dashboard(self) -> DashboardRepo:
         return DashboardRepo(self.session, self.user_id)
+
+    @property
+    def data(self) -> DataRepo:
+        return DataRepo(self.session, self.user_id)
 
     @property
     def parser_settings(self) -> ParserSettingRepo:

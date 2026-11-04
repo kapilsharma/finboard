@@ -151,6 +151,26 @@ export interface paths {
     patch: operations['update_category_api_v1_categories__category_id__patch']
     trace?: never
   }
+  '/api/v1/categories/{category_id}/merge': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    put?: never
+    /**
+     * Merge Category
+     * @description Move this category's transactions, rules and budgets into another, then delete it.
+     */
+    post: operations['merge_category_api_v1_categories__category_id__merge_post']
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
   '/api/v1/jobs': {
     parameters: {
       query?: never
@@ -380,7 +400,7 @@ export interface paths {
     }
     /**
      * List Parsers
-     * @description Installed parsers, plus any that failed to load and why (ADR-0009).
+     * @description Installed parsers with your settings, plus any that failed to load and why (ADR-0009).
      */
     get: operations['list_parsers_api_v1_parsers_get']
     put?: never
@@ -389,6 +409,27 @@ export interface paths {
     options?: never
     head?: never
     patch?: never
+    trace?: never
+  }
+  '/api/v1/parsers/{parser_id}': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    put?: never
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    /**
+     * Update Parser
+     * @description Switch a parser on or off for detection, or set its options (validated against the
+     *     parser's own options schema).
+     */
+    patch: operations['update_parser_api_v1_parsers__parser_id__patch']
     trace?: never
   }
   '/api/v1/transactions': {
@@ -835,6 +876,143 @@ export interface paths {
     patch?: never
     trace?: never
   }
+  '/api/v1/budgets/history': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /**
+     * Budget History
+     * @description Every limit change, oldest first (optionally for one category).
+     */
+    get: operations['budget_history_api_v1_budgets_history_get']
+    put?: never
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/api/v1/budgets/{category_id}/{month}': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    put?: never
+    post?: never
+    /**
+     * Delete Budget Change
+     * @description Undo the limit change made from `month` (YYYY-MM); the earlier limit applies again.
+     */
+    delete: operations['delete_budget_change_api_v1_budgets__category_id___month__delete']
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/api/v1/data/export': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    put?: never
+    /**
+     * Start Export
+     * @description Export all your data (JSON + archived statements, as one zip) in the background.
+     *     Download it from `/data/exports/{job_id}` when the job has succeeded.
+     */
+    post: operations['start_export_api_v1_data_export_post']
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/api/v1/data/exports/{job_id}': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** Download Export */
+    get: operations['download_export_api_v1_data_exports__job_id__get']
+    put?: never
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/api/v1/data/import': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    put?: never
+    /**
+     * Start Import
+     * @description Load a Finboard export (multipart field `file`) into this Finboard, which must have no
+     *     accounts, transactions or imports yet. The zip is checked completely before anything is
+     *     written.
+     */
+    post: operations['start_import_api_v1_data_import_post']
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/api/v1/data/transactions.csv': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** Transactions Csv */
+    get: operations['transactions_csv_api_v1_data_transactions_csv_get']
+    put?: never
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/api/v1/data/delete-all': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    put?: never
+    /**
+     * Delete All
+     * @description Delete all your data and files (not other users'). Send `{"confirm": "DELETE ALL"}`.
+     */
+    post: operations['delete_all_api_v1_data_delete_all_post']
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
 }
 export type webhooks = Record<string, never>
 export interface components {
@@ -1000,6 +1178,11 @@ export interface components {
        */
       amount: string
     }
+    /** BudgetHistory */
+    BudgetHistory: {
+      /** Items */
+      items: components['schemas']['BudgetOut'][]
+    }
     /** BudgetList */
     BudgetList: {
       /**
@@ -1113,6 +1296,24 @@ export interface components {
       /** Items */
       items: components['schemas']['CategoryOut'][]
     }
+    /** CategoryMergeIn */
+    CategoryMergeIn: {
+      /**
+       * Into Id
+       * Format: uuid
+       */
+      into_id: string
+    }
+    /** CategoryMergeOut */
+    CategoryMergeOut: {
+      into: components['schemas']['CategoryOut']
+      /** Transactions */
+      transactions: number
+      /** Rules */
+      rules: number
+      /** Budgets */
+      budgets: number
+    }
     /** CategoryOut */
     CategoryOut: {
       /**
@@ -1214,6 +1415,14 @@ export interface components {
       income_sources: components['schemas']['IncomeSourceOut'][]
       /** Accounts */
       accounts: components['schemas']['AccountTotalsOut'][]
+    }
+    /** DeleteAllIn */
+    DeleteAllIn: {
+      /**
+       * Confirm
+       * @description Must be exactly "DELETE ALL"
+       */
+      confirm: string
     }
     /**
      * Direction
@@ -1527,6 +1736,25 @@ export interface components {
       file_types: string[]
       /** Fallback */
       fallback: boolean
+      /**
+       * Enabled
+       * @description Your choice: may detection pick this parser?
+       */
+      enabled: boolean
+      /**
+       * Options
+       * @description Your options for this parser
+       */
+      options: {
+        [key: string]: unknown
+      }
+      /**
+       * Options Schema
+       * @description JSON Schema of the parser's options (null: it has none)
+       */
+      options_schema: {
+        [key: string]: unknown
+      } | null
     }
     /** ParserRef */
     ParserRef: {
@@ -1536,6 +1764,15 @@ export interface components {
       version: string | null
       /** Confidence */
       confidence: number | null
+    }
+    /** ParserSettingUpdate */
+    ParserSettingUpdate: {
+      /** Enabled */
+      enabled?: boolean | null
+      /** Options */
+      options?: {
+        [key: string]: unknown
+      } | null
     }
     /** Period */
     Period: {
@@ -2487,6 +2724,41 @@ export interface operations {
       }
     }
   }
+  merge_category_api_v1_categories__category_id__merge_post: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        category_id: string
+      }
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['CategoryMergeIn']
+      }
+    }
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['CategoryMergeOut']
+        }
+      }
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['HTTPValidationError']
+        }
+      }
+    }
+  }
   list_jobs_api_v1_jobs_get: {
     parameters: {
       query?: never
@@ -2939,6 +3211,41 @@ export interface operations {
         }
         content: {
           'application/json': components['schemas']['ParserList']
+        }
+      }
+    }
+  }
+  update_parser_api_v1_parsers__parser_id__patch: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        parser_id: string
+      }
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['ParserSettingUpdate']
+      }
+    }
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ParserOut']
+        }
+      }
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['HTTPValidationError']
         }
       }
     }
@@ -3734,6 +4041,198 @@ export interface operations {
         }
         content: {
           'application/json': components['schemas']['BudgetOut']
+        }
+      }
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['HTTPValidationError']
+        }
+      }
+    }
+  }
+  budget_history_api_v1_budgets_history_get: {
+    parameters: {
+      query?: {
+        category_id?: string | null
+      }
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['BudgetHistory']
+        }
+      }
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['HTTPValidationError']
+        }
+      }
+    }
+  }
+  delete_budget_change_api_v1_budgets__category_id___month__delete: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        category_id: string
+        month: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      /** @description Successful Response */
+      204: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['HTTPValidationError']
+        }
+      }
+    }
+  }
+  start_export_api_v1_data_export_post: {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      /** @description Successful Response */
+      202: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['JobAccepted']
+        }
+      }
+    }
+  }
+  download_export_api_v1_data_exports__job_id__get: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        job_id: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/zip': unknown
+        }
+      }
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['HTTPValidationError']
+        }
+      }
+    }
+  }
+  start_import_api_v1_data_import_post: {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        'multipart/form-data': {
+          /** Format: binary */
+          file: string
+        }
+      }
+    }
+    responses: {
+      /** @description Successful Response */
+      202: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['JobAccepted']
+        }
+      }
+    }
+  }
+  transactions_csv_api_v1_data_transactions_csv_get: {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'text/csv': unknown
+        }
+      }
+    }
+  }
+  delete_all_api_v1_data_delete_all_post: {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['DeleteAllIn']
+      }
+    }
+    responses: {
+      /** @description Successful Response */
+      202: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['JobAccepted']
         }
       }
       /** @description Validation Error */

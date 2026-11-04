@@ -767,3 +767,7 @@ class TxnListOut(BaseModel):
     next_cursor: str | None
     total: int
     sums: TxnSums
+
+
+class DeleteAllIn(InputModel):
+    confirm: str = Field(max_length=20, description='Must be exactly "DELETE ALL"')

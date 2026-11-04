@@ -18,6 +18,7 @@ from finboard.services.accounts import AccountService
 from finboard.services.budgets import BudgetService
 from finboard.services.categories import CategoryService
 from finboard.services.dashboard import DashboardService
+from finboard.services.data import DataService
 from finboard.services.imports import ImportLimits, ImportService
 from finboard.services.jobs import JobQueue, JobService
 from finboard.services.review import ReviewService
@@ -119,7 +120,12 @@ def get_budget_service(uow: UowDep) -> BudgetService:
     return BudgetService(uow)
 
 
+def get_data_service(request: Request, uow: UowDep, queue: QueueDep) -> DataService:
+    return DataService(uow, queue, request.app.state.blobs)
+
+
 SettingsDep = Annotated[Settings, Depends(get_settings)]
+DataServiceDep = Annotated[DataService, Depends(get_data_service)]
 DashboardServiceDep = Annotated[DashboardService, Depends(get_dashboard_service)]
 BudgetServiceDep = Annotated[BudgetService, Depends(get_budget_service)]
 RuleServiceDep = Annotated[RuleService, Depends(get_rule_service)]
