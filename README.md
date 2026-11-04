@@ -36,6 +36,13 @@ uv run finboard dev                               # API (reload) + worker + Vite
 
 Open http://127.0.0.1:5173. API docs: http://127.0.0.1:8765/api/docs.
 
+No Docker (e.g. a cloud sandbox on Debian/Ubuntu)? `bash scripts/setup-native-services.sh` installs
+and starts the same Postgres and Redis natively.
+
+**Before pushing:** `bash scripts/ci-local.sh` runs the same checks as GitHub Actions
+(`--fast` for a quicker loop; `scripts\ci-local.ps1` on Windows). Contributors and AI coding
+sessions: see [CLAUDE.md](CLAUDE.md) for conventions and the definition of done.
+
 | Task | Command (from `backend/` or `frontend/`) |
 |---|---|
 | Backend tests (needs the compose stack) | `uv run pytest` |

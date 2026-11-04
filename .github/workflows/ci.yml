@@ -1,3 +1,5 @@
+# Mirrored locally by scripts/ci-local.sh (and scripts/ci-local.ps1 on Windows).
+# Add or change a step here, and do the same there.
 name: CI
 
 on:
@@ -25,7 +27,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
-      - uses: astral-sh/setup-uv@v6
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3 (no moving major tags since v8; pin by SHA)
         with:
           enable-cache: true
       - uses: actions/setup-node@v5
@@ -89,7 +91,7 @@ jobs:
           FINBOARD_OWNER_PASSWORD: finboard_owner_dev
           FINBOARD_APP_PASSWORD: finboard_app_dev
         run: sh deploy/postgres/init/01-finboard.sh
-      - uses: astral-sh/setup-uv@v6
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3 (no moving major tags since v8; pin by SHA)
         with:
           enable-cache: true
       - name: Tests (integration + tenancy + unit)
@@ -109,7 +111,7 @@ jobs:
       UV_PYTHON: "3.14"
     steps:
       - uses: actions/checkout@v5
-      - uses: astral-sh/setup-uv@v6
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3 (no moving major tags since v8; pin by SHA)
         with:
           enable-cache: true
       - name: Pure tests (no database) — parsers will join here in M2
