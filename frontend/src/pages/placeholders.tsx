@@ -18,14 +18,6 @@ export function TransactionsPage() {
   )
 }
 
-export function ReviewPage() {
-  return (
-    <ComingSoon title="Review" milestone="M3">
-      Transactions no rule could categorise, and suggested transfers between your own accounts.
-    </ComingSoon>
-  )
-}
-
 export function NotFoundPage() {
   return (
     <>

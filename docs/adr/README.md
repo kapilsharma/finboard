@@ -39,3 +39,4 @@ Status values: **Accepted (given)** = fixed by HANDOVER §2 · **Accepted** · *
 | [0032](0032-nl-analytics-langgraph.md) | Ask Finboard: spec-first NL analytics with LangGraph | Accepted (owner) |
 | [0033](0033-fallback-parsers-and-fixture-discovery.md) | Fallback parsers; fixture builders via entry points | Accepted |
 | [0034](0034-parse-cap-and-hard-kill.md) | Per-user parse cap; recording hard-killed parses | Accepted |
+| [0035](0035-categorisation-as-built.md) | Categorisation as built (M3) | Accepted |

@@ -18,8 +18,10 @@ from finboard.db.repos import (
     ImportRepo,
     ImportRowRepo,
     JobRepo,
+    RuleRepo,
     SettingRepo,
     StagedRowRepo,
+    TransferRepo,
     TxnRepo,
     UserRepo,
 )
@@ -76,6 +78,14 @@ class UnitOfWork:
     @property
     def import_rows(self) -> ImportRowRepo:
         return ImportRowRepo(self.session, self.user_id)
+
+    @property
+    def rules(self) -> RuleRepo:
+        return RuleRepo(self.session, self.user_id)
+
+    @property
+    def transfers(self) -> TransferRepo:
+        return TransferRepo(self.session, self.user_id)
 
     async def commit(self) -> None:
         await self.session.commit()

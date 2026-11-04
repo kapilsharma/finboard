@@ -4,10 +4,12 @@ import datetime as dt
 import uuid
 from datetime import date, datetime
 from decimal import Decimal
-from typing import Annotated, Any, ClassVar, Self
+from enum import StrEnum
+from typing import Annotated, Any, ClassVar, Literal, Self
 
 from pydantic import (
     BaseModel,
+    BeforeValidator,
     ConfigDict,
     Field,
     PlainSerializer,
@@ -25,8 +27,10 @@ from finboard.domain.enums import (
     ImportSource,
     ImportStatus,
     JobStatus,
+    MatchKind,
     ReconStatus,
     Theme,
+    TransferStatus,
 )
 
 # Money leaves the API as a decimal string with 2 places, never a float (ADR-0008).
@@ -299,6 +303,7 @@ class StagedRowOut(BaseModel):
     possible_duplicate: bool
     category_id: uuid.UUID | None
     categorised_by: CategorisedBy | None
+    rule_id: uuid.UUID | None = None
 
 
 class AlreadyImported(BaseModel):
@@ -359,3 +364,227 @@ class StagedRowUpdate(PatchModel):
 class CommitIn(InputModel):
     override_reconciliation: bool = False
     create_account: AccountDraft | None = None
+
+
+# ---------------------------------------------------------------- categorisation (§9, §10)
+
+
+def _no_float(value: Any) -> Any:
+    if isinstance(value, float):
+        raise ValueError('send amounts as decimal strings, e.g. "2350.00"')
+    return value
+
+
+# Money in: a decimal string (or integer), >= 0, at most 2 places. Floats are refused (ADR-0008).
+MoneyIn = Annotated[
+    Decimal,
+    BeforeValidator(_no_float),
+    Field(ge=0, max_digits=14, decimal_places=2),
+    WithJsonSchema({"type": "string", "pattern": r"^\d+(\.\d{1,2})?$", "examples": ["500.00"]}),
+]
+Pattern = Annotated[str, StringConstraints(min_length=1, max_length=500)]
+Label = Annotated[str, StringConstraints(strip_whitespace=True, max_length=120)]
+
+
+class TxnOut(OutputModel):
+    id: uuid.UUID
+    account_id: uuid.UUID
+    import_id: uuid.UUID | None
+    date: dt.date
+    description: str = Field(validation_alias="description_raw")
+    description_norm: str
+    payee_label: str | None
+    amount: Money
+    direction: Direction
+    category_id: uuid.UUID
+    type: CategoryType
+    categorised_by: CategorisedBy
+    rule_id: uuid.UUID | None
+    needs_review: bool
+    notes: str | None
+
+
+class TxnBrief(BaseModel):
+    """A matched transaction in a rule test."""
+
+    id: uuid.UUID
+    account_id: uuid.UUID
+    date: dt.date
+    description: str
+    amount: Money
+    direction: Direction
+    category_id: uuid.UUID
+    categorised_by: CategorisedBy
+
+
+class TxnUpdate(PatchModel):
+    not_nullable = frozenset({"category_id"})
+
+    category_id: uuid.UUID | None = None
+    notes: Annotated[str, StringConstraints(max_length=2000)] | None = None
+    payee_label: Label | None = None
+
+
+class TxnBulkIn(InputModel):
+    ids: Annotated[list[uuid.UUID], Field(min_length=1, max_length=1000)]
+    category_id: uuid.UUID
+
+
+class TxnBulkOut(BaseModel):
+    updated: int
+
+
+class RuleCreate(InputModel):
+    match_kind: MatchKind
+    pattern: Pattern
+    category_id: uuid.UUID
+    account_id: uuid.UUID | None = None
+    direction: Direction | None = None
+    amount_min: MoneyIn | None = None
+    amount_max: MoneyIn | None = None
+    label: Label | None = None
+    enabled: bool = True
+
+
+class RuleUpdate(PatchModel):
+    not_nullable = frozenset({"match_kind", "pattern", "category_id", "enabled"})
+
+    match_kind: MatchKind | None = None
+    pattern: Pattern | None = None
+    category_id: uuid.UUID | None = None
+    account_id: uuid.UUID | None = None
+    direction: Direction | None = None
+    amount_min: MoneyIn | None = None
+    amount_max: MoneyIn | None = None
+    label: Label | None = None
+    enabled: bool | None = None
+
+
+class RuleOut(OutputModel):
+    id: uuid.UUID
+    priority: int
+    match_kind: MatchKind
+    pattern: str
+    category_id: uuid.UUID
+    account_id: uuid.UUID | None
+    direction: Direction | None
+    amount_min: Money | None
+    amount_max: Money | None
+    label: str | None
+    enabled: bool
+    hits: int
+    last_hit_at: datetime | None
+    error: str | None = Field(description="Why the rule was switched off automatically")
+    created_at: datetime
+    updated_at: datetime
+
+
+class RuleList(BaseModel):
+    items: list[RuleOut]
+
+
+class RuleReorderIn(InputModel):
+    ids: Annotated[list[uuid.UUID], Field(max_length=5000)]
+
+
+class RuleTestIn(InputModel):
+    match_kind: MatchKind
+    pattern: Pattern
+    category_id: uuid.UUID | None = None
+    account_id: uuid.UUID | None = None
+    direction: Direction | None = None
+    amount_min: MoneyIn | None = None
+    amount_max: MoneyIn | None = None
+    rule_id: uuid.UUID | None = Field(
+        default=None, description="Test an edit of this rule at its current position"
+    )
+
+
+class ShadowOut(BaseModel):
+    rule_id: uuid.UUID
+    pattern: str
+    count: int
+
+
+class RuleTestOut(BaseModel):
+    match_count: int = Field(description="Transactions the pattern and constraints match")
+    would_change: int = Field(description="Of those, how many would get a different category")
+    uncategorised: int = Field(description="Matches that are uncategorised now")
+    shadowed: int = Field(description="Matches an earlier rule takes first")
+    shadowed_by: list[ShadowOut]
+    sample: list[TxnBrief]
+
+
+class ApplyScopeName(StrEnum):
+    UNCATEGORISED = "uncategorised"
+    ALL = "all"
+
+
+class RuleApplyIn(InputModel):
+    scope: ApplyScopeName = ApplyScopeName.UNCATEGORISED
+    include_manual: bool = False
+    dry_run: bool = True
+
+
+class JobAccepted(BaseModel):
+    job: JobOut
+
+
+class RulePackImportIn(InputModel):
+    content: Annotated[str, StringConstraints(min_length=1, max_length=1024 * 1024)]
+    mode: Literal["merge", "replace"] = "merge"
+
+
+class RulePackImportOut(BaseModel):
+    added: int
+    skipped: int
+    replaced: int
+    categories_created: int
+
+
+class RuleSuggestionOut(BaseModel):
+    match_kind: MatchKind
+    pattern: str
+
+
+class ReviewGroupOut(BaseModel):
+    key: str
+    suggestion: RuleSuggestionOut | None
+    count: int
+    debits: Money
+    credits: Money
+    transactions: list[TxnOut]
+
+
+class ReviewGroupsOut(BaseModel):
+    total: int
+    groups: list[ReviewGroupOut]
+
+
+class SuggestRuleIn(InputModel):
+    transaction_id: uuid.UUID
+
+
+class SuggestRuleOut(BaseModel):
+    suggestion: RuleSuggestionOut | None
+    test: RuleTestOut | None
+
+
+class TransferSide(BaseModel):
+    transaction: TxnOut
+    account: AccountRef
+
+
+class TransferOut(BaseModel):
+    id: uuid.UUID
+    status: TransferStatus
+    score: float
+    days_apart: int
+    debit: TransferSide
+    credit: TransferSide
+    created_at: datetime
+    decided_at: datetime | None
+
+
+class TransferList(BaseModel):
+    items: list[TransferOut]

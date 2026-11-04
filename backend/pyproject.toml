@@ -19,6 +19,8 @@ dependencies = [
     "pikepdf>=10.17.0",
     "cryptography>=50.0.2",
     "python-multipart>=0.0.33",
+    "regex>=2025.11",
+    "pyyaml>=6.0.2",
 ]
 
 [project.scripts]
@@ -44,6 +46,8 @@ dev = [
     "reportlab>=5.1.0",
     "pytest-socket>=0.8.1",
     "types-reportlab>=5.0.0.20261008",
+    "types-pyyaml>=6.0.12.20261103",
+    "types-regex>=2026.9.29.20261030",
 ]
 
 [build-system]
@@ -86,7 +90,10 @@ asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "session"
 asyncio_default_test_loop_scope = "session"
 addopts = "-ra --strict-markers"
-markers = ["integration: needs the dev Postgres + Redis (deploy/compose.dev.yaml)"]
+markers = [
+    "integration: needs the dev Postgres + Redis (deploy/compose.dev.yaml)",
+    "perf: performance budgets (ARCHITECTURE §14); deselect with -m 'not perf'",
+]
 filterwarnings = ["error::DeprecationWarning:finboard.*"]
 
 # Layer rules from docs/ARCHITECTURE.md §3, enforced in CI with `lint-imports`.
@@ -113,6 +120,15 @@ name = "Domain is pure"
 type = "forbidden"
 source_modules = ["finboard.domain"]
 forbidden_modules = ["fastapi", "starlette", "sqlalchemy", "celery", "redis", "finboard.core.config"]
+
+[[tool.importlinter.contracts]]
+name = "Categorisation is pure"
+type = "forbidden"
+source_modules = ["finboard.categorisation"]
+forbidden_modules = [
+    "fastapi", "starlette", "sqlalchemy", "celery", "redis", "finboard.core.config",
+    "finboard.db", "finboard.services", "finboard.api", "finboard.jobs",
+]
 
 [[tool.importlinter.contracts]]
 name = "Services know nothing about HTTP or Celery"

@@ -1,0 +1,92 @@
+.form {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.field {
+  display: grid;
+  gap: var(--space-1);
+  font-size: 0.87rem;
+  color: var(--text-muted);
+}
+
+.field input,
+.field select {
+  width: 100%;
+  color: var(--text);
+}
+
+.grow {
+  flex: 1;
+}
+
+.check {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.rule {
+  margin: 0;
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-muted);
+  display: grid;
+  gap: var(--space-2);
+}
+
+.ruleRow {
+  display: flex;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.ruleRow > :first-child {
+  min-width: 140px;
+}
+
+.ruleRow > .grow {
+  min-width: 180px;
+}
+
+.example {
+  margin: 0;
+  padding: var(--space-2) var(--space-3);
+  border-left: 3px solid var(--border-strong);
+  display: grid;
+  gap: 2px;
+}
+
+.exampleText {
+  font-family: ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace;
+  font-size: 0.85rem;
+  overflow-wrap: anywhere;
+}
+
+.exampleMeta {
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
+
+.test {
+  margin: 0;
+  font-size: 0.87rem;
+  color: var(--text-muted);
+}
+
+.testError {
+  margin: 0;
+  font-size: 0.87rem;
+  color: var(--bad);
+}
+
+.warnText {
+  color: var(--warn);
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}

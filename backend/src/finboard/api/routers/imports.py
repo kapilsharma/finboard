@@ -126,6 +126,7 @@ def to_out(view: ImportView) -> ImportOut:
                 possible_duplicate=r.possible_duplicate,
                 category_id=r.category_id,
                 categorised_by=r.categorised_by,
+                rule_id=r.rule_id,
             )
             for r in view.rows
         ]

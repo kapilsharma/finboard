@@ -1,0 +1,45 @@
+.backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: grid;
+  place-items: start center;
+  padding: 8vh var(--space-4) var(--space-4);
+  background: rgb(0 0 0 / 0.45);
+  overflow-y: auto;
+}
+
+.panel {
+  width: min(560px, 100%);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: var(--space-4) var(--space-5) var(--space-5);
+  box-shadow: 0 12px 40px rgb(0 0 0 / 0.25);
+}
+
+.wide {
+  width: min(760px, 100%);
+}
+
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
+}
+
+.header h2 {
+  margin: 0;
+}
+
+@media (max-width: 600px) {
+  .backdrop {
+    padding-top: var(--space-4);
+  }
+
+  .panel {
+    padding: var(--space-3);
+  }
+}

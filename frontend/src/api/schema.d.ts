@@ -391,6 +391,349 @@ export interface paths {
     patch?: never
     trace?: never
   }
+  '/api/v1/transactions/{txn_id}': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** Get Transaction */
+    get: operations['get_transaction_api_v1_transactions__txn_id__get']
+    put?: never
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    /**
+     * Update Transaction
+     * @description Categorise by hand (`categorised_by=manual`), or set notes and a payee label.
+     */
+    patch: operations['update_transaction_api_v1_transactions__txn_id__patch']
+    trace?: never
+  }
+  '/api/v1/transactions/bulk': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    put?: never
+    /**
+     * Bulk Categorise
+     * @description Put up to 1000 transactions in one category by hand.
+     */
+    post: operations['bulk_categorise_api_v1_transactions_bulk_post']
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/api/v1/review/groups': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /**
+     * Review Groups
+     * @description Transactions that need a category, grouped by the rule the suggester would propose.
+     */
+    get: operations['review_groups_api_v1_review_groups_get']
+    put?: never
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/api/v1/review/suggest-rule': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    put?: never
+    /**
+     * Suggest Rule
+     * @description The rule the suggester proposes for a transaction, with live match counts.
+     */
+    post: operations['suggest_rule_api_v1_review_suggest_rule_post']
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/api/v1/transfers': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** List Transfers */
+    get: operations['list_transfers_api_v1_transfers_get']
+    put?: never
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/api/v1/transfers/suggest': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    put?: never
+    /**
+     * Suggest Transfers
+     * @description Look for transfers between your accounts now (also runs after every commit).
+     */
+    post: operations['suggest_transfers_api_v1_transfers_suggest_post']
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/api/v1/transfers/{pair_id}/confirm': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    put?: never
+    /**
+     * Confirm Transfer
+     * @description Both sides become Card payment (a credit card is involved) or Own transfer.
+     */
+    post: operations['confirm_transfer_api_v1_transfers__pair_id__confirm_post']
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/api/v1/transfers/{pair_id}/reject': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    put?: never
+    /**
+     * Reject Transfer
+     * @description Not a transfer: the pair won't be suggested again.
+     */
+    post: operations['reject_transfer_api_v1_transfers__pair_id__reject_post']
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/api/v1/transfers/{pair_id}': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    put?: never
+    post?: never
+    /**
+     * Unpair Transfer
+     * @description Undo a pair: the rules categorise both sides again, and it isn't suggested again.
+     */
+    delete: operations['unpair_transfer_api_v1_transfers__pair_id__delete']
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/api/v1/rules': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /**
+     * List Rules
+     * @description All rules in the order they run (priority, then id).
+     */
+    get: operations['list_rules_api_v1_rules_get']
+    put?: never
+    /**
+     * Create Rule
+     * @description Add a rule after the existing ones.
+     */
+    post: operations['create_rule_api_v1_rules_post']
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/api/v1/rules/reorder': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    put?: never
+    /**
+     * Reorder Rules
+     * @description Set the order of all rules (every rule id, exactly once, first runs first).
+     */
+    post: operations['reorder_rules_api_v1_rules_reorder_post']
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/api/v1/rules/test': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    put?: never
+    /**
+     * Test Rule
+     * @description Dry-run a rule against the committed transactions. Changes nothing.
+     */
+    post: operations['test_rule_api_v1_rules_test_post']
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/api/v1/rules/apply': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    put?: never
+    /**
+     * Apply Rules
+     * @description Re-apply the rules in the background (`rules.apply`). With `dry_run` (the default) the
+     *     job's result is the diff; nothing changes.
+     */
+    post: operations['apply_rules_api_v1_rules_apply_post']
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/api/v1/rules/export': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /**
+     * Export Rules
+     * @description A rule pack: categories by path, account constraints left out.
+     */
+    get: operations['export_rules_api_v1_rules_export_get']
+    put?: never
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/api/v1/rules/import': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    put?: never
+    /**
+     * Import Rules
+     * @description Load a YAML or JSON rule pack: `merge` adds its rules after yours (skipping exact
+     *     duplicates), `replace` swaps your rules for the pack's.
+     */
+    post: operations['import_rules_api_v1_rules_import_post']
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/api/v1/rules/starter-pack': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    put?: never
+    /**
+     * Add Starter Pack
+     * @description Merge the built-in starter rules (Indian merchants and payment types).
+     */
+    post: operations['add_starter_pack_api_v1_rules_starter_pack_post']
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/api/v1/rules/{rule_id}': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** Get Rule */
+    get: operations['get_rule_api_v1_rules__rule_id__get']
+    put?: never
+    post?: never
+    /** Delete Rule */
+    delete: operations['delete_rule_api_v1_rules__rule_id__delete']
+    options?: never
+    head?: never
+    /** Update Rule */
+    patch: operations['update_rule_api_v1_rules__rule_id__patch']
+    trace?: never
+  }
 }
 export type webhooks = Record<string, never>
 export interface components {
@@ -518,6 +861,11 @@ export interface components {
       /** Committed At */
       committed_at: string | null
     }
+    /**
+     * ApplyScopeName
+     * @enum {string}
+     */
+    ApplyScopeName: 'uncategorised' | 'all'
     /**
      * CategorisedBy
      * @enum {string}
@@ -711,6 +1059,10 @@ export interface components {
       | 'rolled_back'
       | 'discarded'
       | 'failed'
+    /** JobAccepted */
+    JobAccepted: {
+      job: components['schemas']['JobOut']
+    }
     /** JobList */
     JobList: {
       /** Items */
@@ -749,6 +1101,11 @@ export interface components {
      * @enum {string}
      */
     JobStatus: 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled'
+    /**
+     * MatchKind
+     * @enum {string}
+     */
+    MatchKind: 'contains' | 'starts_with' | 'equals' | 'regex'
     /** MeOut */
     MeOut: {
       /**
@@ -866,6 +1223,237 @@ export interface components {
       /** Account Id */
       account_id?: string | null
     }
+    /** ReviewGroupOut */
+    ReviewGroupOut: {
+      /** Key */
+      key: string
+      suggestion: components['schemas']['RuleSuggestionOut'] | null
+      /** Count */
+      count: number
+      /**
+       * Debits
+       * @example 2350.00
+       */
+      debits: string
+      /**
+       * Credits
+       * @example 2350.00
+       */
+      credits: string
+      /** Transactions */
+      transactions: components['schemas']['TxnOut'][]
+    }
+    /** ReviewGroupsOut */
+    ReviewGroupsOut: {
+      /** Total */
+      total: number
+      /** Groups */
+      groups: components['schemas']['ReviewGroupOut'][]
+    }
+    /** RuleApplyIn */
+    RuleApplyIn: {
+      /** @default uncategorised */
+      scope: components['schemas']['ApplyScopeName']
+      /**
+       * Include Manual
+       * @default false
+       */
+      include_manual: boolean
+      /**
+       * Dry Run
+       * @default true
+       */
+      dry_run: boolean
+    }
+    /** RuleCreate */
+    RuleCreate: {
+      match_kind: components['schemas']['MatchKind']
+      /** Pattern */
+      pattern: string
+      /**
+       * Category Id
+       * Format: uuid
+       */
+      category_id: string
+      /** Account Id */
+      account_id?: string | null
+      direction?: components['schemas']['Direction'] | null
+      /** Amount Min */
+      amount_min?: string | null
+      /** Amount Max */
+      amount_max?: string | null
+      /** Label */
+      label?: string | null
+      /**
+       * Enabled
+       * @default true
+       */
+      enabled: boolean
+    }
+    /** RuleList */
+    RuleList: {
+      /** Items */
+      items: components['schemas']['RuleOut'][]
+    }
+    /** RuleOut */
+    RuleOut: {
+      /**
+       * Id
+       * Format: uuid
+       */
+      id: string
+      /** Priority */
+      priority: number
+      match_kind: components['schemas']['MatchKind']
+      /** Pattern */
+      pattern: string
+      /**
+       * Category Id
+       * Format: uuid
+       */
+      category_id: string
+      /** Account Id */
+      account_id: string | null
+      direction: components['schemas']['Direction'] | null
+      /** Amount Min */
+      amount_min: string | null
+      /** Amount Max */
+      amount_max: string | null
+      /** Label */
+      label: string | null
+      /** Enabled */
+      enabled: boolean
+      /** Hits */
+      hits: number
+      /** Last Hit At */
+      last_hit_at: string | null
+      /**
+       * Error
+       * @description Why the rule was switched off automatically
+       */
+      error: string | null
+      /**
+       * Created At
+       * Format: date-time
+       */
+      created_at: string
+      /**
+       * Updated At
+       * Format: date-time
+       */
+      updated_at: string
+    }
+    /** RulePackImportIn */
+    RulePackImportIn: {
+      /** Content */
+      content: string
+      /**
+       * Mode
+       * @default merge
+       * @enum {string}
+       */
+      mode: 'merge' | 'replace'
+    }
+    /** RulePackImportOut */
+    RulePackImportOut: {
+      /** Added */
+      added: number
+      /** Skipped */
+      skipped: number
+      /** Replaced */
+      replaced: number
+      /** Categories Created */
+      categories_created: number
+    }
+    /** RuleReorderIn */
+    RuleReorderIn: {
+      /** Ids */
+      ids: string[]
+    }
+    /** RuleSuggestionOut */
+    RuleSuggestionOut: {
+      match_kind: components['schemas']['MatchKind']
+      /** Pattern */
+      pattern: string
+    }
+    /** RuleTestIn */
+    RuleTestIn: {
+      match_kind: components['schemas']['MatchKind']
+      /** Pattern */
+      pattern: string
+      /** Category Id */
+      category_id?: string | null
+      /** Account Id */
+      account_id?: string | null
+      direction?: components['schemas']['Direction'] | null
+      /** Amount Min */
+      amount_min?: string | null
+      /** Amount Max */
+      amount_max?: string | null
+      /**
+       * Rule Id
+       * @description Test an edit of this rule at its current position
+       */
+      rule_id?: string | null
+    }
+    /** RuleTestOut */
+    RuleTestOut: {
+      /**
+       * Match Count
+       * @description Transactions the pattern and constraints match
+       */
+      match_count: number
+      /**
+       * Would Change
+       * @description Of those, how many would get a different category
+       */
+      would_change: number
+      /**
+       * Uncategorised
+       * @description Matches that are uncategorised now
+       */
+      uncategorised: number
+      /**
+       * Shadowed
+       * @description Matches an earlier rule takes first
+       */
+      shadowed: number
+      /** Shadowed By */
+      shadowed_by: components['schemas']['ShadowOut'][]
+      /** Sample */
+      sample: components['schemas']['TxnBrief'][]
+    }
+    /** RuleUpdate */
+    RuleUpdate: {
+      match_kind?: components['schemas']['MatchKind'] | null
+      /** Pattern */
+      pattern?: string | null
+      /** Category Id */
+      category_id?: string | null
+      /** Account Id */
+      account_id?: string | null
+      direction?: components['schemas']['Direction'] | null
+      /** Amount Min */
+      amount_min?: string | null
+      /** Amount Max */
+      amount_max?: string | null
+      /** Label */
+      label?: string | null
+      /** Enabled */
+      enabled?: boolean | null
+    }
+    /** ShadowOut */
+    ShadowOut: {
+      /**
+       * Rule Id
+       * Format: uuid
+       */
+      rule_id: string
+      /** Pattern */
+      pattern: string
+      /** Count */
+      count: number
+    }
     /** StagedRowOut */
     StagedRowOut: {
       /** Seq */
@@ -896,6 +1484,8 @@ export interface components {
       /** Category Id */
       category_id: string | null
       categorised_by: components['schemas']['CategorisedBy'] | null
+      /** Rule Id */
+      rule_id?: string | null
     }
     /** StagedRowUpdate */
     StagedRowUpdate: {
@@ -904,11 +1494,165 @@ export interface components {
       /** Category Id */
       category_id?: string | null
     }
+    /** SuggestRuleIn */
+    SuggestRuleIn: {
+      /**
+       * Transaction Id
+       * Format: uuid
+       */
+      transaction_id: string
+    }
+    /** SuggestRuleOut */
+    SuggestRuleOut: {
+      suggestion: components['schemas']['RuleSuggestionOut'] | null
+      test: components['schemas']['RuleTestOut'] | null
+    }
     /**
      * Theme
      * @enum {string}
      */
     Theme: 'system' | 'light' | 'dark'
+    /** TransferList */
+    TransferList: {
+      /** Items */
+      items: components['schemas']['TransferOut'][]
+    }
+    /** TransferOut */
+    TransferOut: {
+      /**
+       * Id
+       * Format: uuid
+       */
+      id: string
+      status: components['schemas']['TransferStatus']
+      /** Score */
+      score: number
+      /** Days Apart */
+      days_apart: number
+      debit: components['schemas']['TransferSide']
+      credit: components['schemas']['TransferSide']
+      /**
+       * Created At
+       * Format: date-time
+       */
+      created_at: string
+      /** Decided At */
+      decided_at: string | null
+    }
+    /** TransferSide */
+    TransferSide: {
+      transaction: components['schemas']['TxnOut']
+      account: components['schemas']['AccountRef']
+    }
+    /**
+     * TransferStatus
+     * @enum {string}
+     */
+    TransferStatus: 'suggested' | 'confirmed' | 'rejected'
+    /**
+     * TxnBrief
+     * @description A matched transaction in a rule test.
+     */
+    TxnBrief: {
+      /**
+       * Id
+       * Format: uuid
+       */
+      id: string
+      /**
+       * Account Id
+       * Format: uuid
+       */
+      account_id: string
+      /**
+       * Date
+       * Format: date
+       */
+      date: string
+      /** Description */
+      description: string
+      /**
+       * Amount
+       * @example 2350.00
+       */
+      amount: string
+      direction: components['schemas']['Direction']
+      /**
+       * Category Id
+       * Format: uuid
+       */
+      category_id: string
+      categorised_by: components['schemas']['CategorisedBy']
+    }
+    /** TxnBulkIn */
+    TxnBulkIn: {
+      /** Ids */
+      ids: string[]
+      /**
+       * Category Id
+       * Format: uuid
+       */
+      category_id: string
+    }
+    /** TxnBulkOut */
+    TxnBulkOut: {
+      /** Updated */
+      updated: number
+    }
+    /** TxnOut */
+    TxnOut: {
+      /**
+       * Id
+       * Format: uuid
+       */
+      id: string
+      /**
+       * Account Id
+       * Format: uuid
+       */
+      account_id: string
+      /** Import Id */
+      import_id: string | null
+      /**
+       * Date
+       * Format: date
+       */
+      date: string
+      /** Description */
+      description: string
+      /** Description Norm */
+      description_norm: string
+      /** Payee Label */
+      payee_label: string | null
+      /**
+       * Amount
+       * @example 2350.00
+       */
+      amount: string
+      direction: components['schemas']['Direction']
+      /**
+       * Category Id
+       * Format: uuid
+       */
+      category_id: string
+      type: components['schemas']['CategoryType']
+      categorised_by: components['schemas']['CategorisedBy']
+      /** Rule Id */
+      rule_id: string | null
+      /** Needs Review */
+      needs_review: boolean
+      /** Notes */
+      notes: string | null
+    }
+    /** TxnUpdate */
+    TxnUpdate: {
+      /** Category Id */
+      category_id?: string | null
+      /** Notes */
+      notes?: string | null
+      /** Payee Label */
+      payee_label?: string | null
+    }
     /** UnlockIn */
     UnlockIn: {
       /**
@@ -1745,6 +2489,643 @@ export interface operations {
         }
         content: {
           'application/json': components['schemas']['ParserList']
+        }
+      }
+    }
+  }
+  get_transaction_api_v1_transactions__txn_id__get: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        txn_id: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['TxnOut']
+        }
+      }
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['HTTPValidationError']
+        }
+      }
+    }
+  }
+  update_transaction_api_v1_transactions__txn_id__patch: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        txn_id: string
+      }
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['TxnUpdate']
+      }
+    }
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['TxnOut']
+        }
+      }
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['HTTPValidationError']
+        }
+      }
+    }
+  }
+  bulk_categorise_api_v1_transactions_bulk_post: {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['TxnBulkIn']
+      }
+    }
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['TxnBulkOut']
+        }
+      }
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['HTTPValidationError']
+        }
+      }
+    }
+  }
+  review_groups_api_v1_review_groups_get: {
+    parameters: {
+      query?: {
+        month?: string | null
+      }
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ReviewGroupsOut']
+        }
+      }
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['HTTPValidationError']
+        }
+      }
+    }
+  }
+  suggest_rule_api_v1_review_suggest_rule_post: {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['SuggestRuleIn']
+      }
+    }
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['SuggestRuleOut']
+        }
+      }
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['HTTPValidationError']
+        }
+      }
+    }
+  }
+  list_transfers_api_v1_transfers_get: {
+    parameters: {
+      query?: {
+        status?: components['schemas']['TransferStatus'] | null
+      }
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['TransferList']
+        }
+      }
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['HTTPValidationError']
+        }
+      }
+    }
+  }
+  suggest_transfers_api_v1_transfers_suggest_post: {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      /** @description Successful Response */
+      202: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['JobAccepted']
+        }
+      }
+    }
+  }
+  confirm_transfer_api_v1_transfers__pair_id__confirm_post: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        pair_id: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['TransferOut']
+        }
+      }
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['HTTPValidationError']
+        }
+      }
+    }
+  }
+  reject_transfer_api_v1_transfers__pair_id__reject_post: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        pair_id: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['TransferOut']
+        }
+      }
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['HTTPValidationError']
+        }
+      }
+    }
+  }
+  unpair_transfer_api_v1_transfers__pair_id__delete: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        pair_id: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      /** @description Successful Response */
+      204: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['HTTPValidationError']
+        }
+      }
+    }
+  }
+  list_rules_api_v1_rules_get: {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['RuleList']
+        }
+      }
+    }
+  }
+  create_rule_api_v1_rules_post: {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['RuleCreate']
+      }
+    }
+    responses: {
+      /** @description Successful Response */
+      201: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['RuleOut']
+        }
+      }
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['HTTPValidationError']
+        }
+      }
+    }
+  }
+  reorder_rules_api_v1_rules_reorder_post: {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['RuleReorderIn']
+      }
+    }
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['RuleList']
+        }
+      }
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['HTTPValidationError']
+        }
+      }
+    }
+  }
+  test_rule_api_v1_rules_test_post: {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['RuleTestIn']
+      }
+    }
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['RuleTestOut']
+        }
+      }
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['HTTPValidationError']
+        }
+      }
+    }
+  }
+  apply_rules_api_v1_rules_apply_post: {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['RuleApplyIn']
+      }
+    }
+    responses: {
+      /** @description Successful Response */
+      202: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['JobAccepted']
+        }
+      }
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['HTTPValidationError']
+        }
+      }
+    }
+  }
+  export_rules_api_v1_rules_export_get: {
+    parameters: {
+      query?: {
+        format?: 'yaml' | 'json'
+      }
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/yaml': unknown
+          'application/json': unknown
+        }
+      }
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['HTTPValidationError']
+        }
+      }
+    }
+  }
+  import_rules_api_v1_rules_import_post: {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['RulePackImportIn']
+      }
+    }
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['RulePackImportOut']
+        }
+      }
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['HTTPValidationError']
+        }
+      }
+    }
+  }
+  add_starter_pack_api_v1_rules_starter_pack_post: {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['RulePackImportOut']
+        }
+      }
+    }
+  }
+  get_rule_api_v1_rules__rule_id__get: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        rule_id: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['RuleOut']
+        }
+      }
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['HTTPValidationError']
+        }
+      }
+    }
+  }
+  delete_rule_api_v1_rules__rule_id__delete: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        rule_id: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      /** @description Successful Response */
+      204: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['HTTPValidationError']
+        }
+      }
+    }
+  }
+  update_rule_api_v1_rules__rule_id__patch: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        rule_id: string
+      }
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['RuleUpdate']
+      }
+    }
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['RuleOut']
+        }
+      }
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['HTTPValidationError']
         }
       }
     }

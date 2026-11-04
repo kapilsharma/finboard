@@ -69,18 +69,24 @@ flowchart LR
 | User B cannot see, commit or roll back user A's import | `tests/integration/tenancy/test_imports_isolation.py` |
 | UI: drop → password → progress → preview → commit | Vitest `ImportPage.test.tsx` (`mockApi`); Playwright `e2e/tests/import.spec.ts` |
 
-## M3 — Categorisation
+## M3 — Categorisation ✅ (2026-11-04)
+*Done: 371 backend tests (incl. the 50k × 200 re-apply perf test, about 5 s against the 10 s budget) + 36 frontend tests; ruff, mypy strict, import-linter (new contract: `categorisation` is pure), oxlint, tsc clean. Review page, CategoriseDialog and Settings › Rules checked in light, dark and at 400 px. Deviations ([ADR-0035](adr/0035-categorisation-as-built.md)):*
+- *The rule suggester proposes the first merchant token, not the longest (narrations put the merchant before the city).*
+- *`transfer_pair` uses partial unique indexes, so rejected pairs can be remembered. Undoing a pair keeps it as rejected; recategorising one side by hand undoes the pair.*
+- *Existing users add the starter pack with `POST /rules/starter-pack` (new users get it at provisioning). Loan/insurance/mutual-fund rows default to Account movement.*
+- *The perf test lives in `tests/integration/perf/test_reapply.py` (it needs the integration fixtures).*
+
 **Scope:** normaliser, matcher (+ regex timeout), categorise in the parse task, rules CRUD/reorder/test/enable, `rules.apply` job (dry run + apply), review groups, CategoriseDialog + rule suggestion, `transfers.suggest` job + confirm/reject, rule pack export/import, starter pack, Settings › Rules.
 
 | Acceptance criterion | Proven by |
 |---|---|
-| Normaliser golden cases (UPI, NEFT, IMPS, POS, ECS, card masks). Hypothesis: idempotent | `tests/unit/test_normalise.py` |
+| Normaliser golden cases (UPI, NEFT, IMPS, POS, ECS, card masks). Hypothesis: idempotent | `tests/unit/test_normalise.py`; starter pack: `tests/unit/test_starter_rules.py` |
 | First match by priority, id. Constraints AND-ed. Regex timeout disables the rule | `tests/unit/test_matcher.py` |
 | Re-apply respects provenance (manual only with flag; transfer never) | `tests/integration/test_rules_apply.py` |
 | Suggestion for `UPI/DR/412345678901/SWIGGY LTD/…` → `contains SWIGGY`, and the match count is right | `tests/unit/test_suggest.py`, `tests/integration/test_review.py` |
 | Transfer pairing ±3 days, 1:1, rejected pairs not re-suggested, CC payment → Card payment | `tests/unit/test_pairing.py`, `tests/integration/test_transfers.py` |
-| Rule packs leak no account ids and round-trip | `tests/integration/test_rule_packs.py` |
-| 50k txns × 200 rules re-applied in < 10 s in a worker | `tests/perf/test_reapply.py` (`perf`) |
+| Rule packs leak no account ids and round-trip | `tests/integration/test_rule_packs.py`; tenancy: `tests/integration/tenancy/test_categorisation_isolation.py` |
+| 50k txns × 200 rules re-applied in < 10 s in a worker | `tests/integration/perf/test_reapply.py` (`perf`) |
 
 ## M3a — AI category suggestions (local, after M3)
 *AI is optional and off by default ([ADR-0030](adr/0030-assistive-ai-opt-in.md)). Can run in parallel with M4.*

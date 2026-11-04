@@ -18,7 +18,11 @@ from finboard.services.accounts import AccountService
 from finboard.services.categories import CategoryService
 from finboard.services.imports import ImportLimits, ImportService
 from finboard.services.jobs import JobQueue, JobService
+from finboard.services.review import ReviewService
+from finboard.services.rules import RuleService
 from finboard.services.settings import SettingsService
+from finboard.services.transactions import TransactionService
+from finboard.services.transfers import TransferService
 
 
 def get_settings(request: Request) -> Settings:
@@ -86,7 +90,30 @@ def get_import_service(
     )
 
 
+QueueDep = Annotated[JobQueue, Depends(get_job_queue)]
+
+
+def get_rule_service(uow: UowDep, queue: QueueDep) -> RuleService:
+    return RuleService(uow, queue)
+
+
+def get_review_service(uow: UowDep, queue: QueueDep) -> ReviewService:
+    return ReviewService(uow, RuleService(uow, queue))
+
+
+def get_transfer_service(uow: UowDep, queue: QueueDep) -> TransferService:
+    return TransferService(uow, queue)
+
+
+def get_transaction_service(uow: UowDep, queue: QueueDep) -> TransactionService:
+    return TransactionService(uow, queue)
+
+
 SettingsDep = Annotated[Settings, Depends(get_settings)]
+RuleServiceDep = Annotated[RuleService, Depends(get_rule_service)]
+ReviewServiceDep = Annotated[ReviewService, Depends(get_review_service)]
+TransferServiceDep = Annotated[TransferService, Depends(get_transfer_service)]
+TransactionServiceDep = Annotated[TransactionService, Depends(get_transaction_service)]
 RegistryDep = Annotated[ParserRegistry, Depends(get_registry)]
 ImportServiceDep = Annotated[ImportService, Depends(get_import_service)]
 AccountServiceDep = Annotated[AccountService, Depends(get_account_service)]
