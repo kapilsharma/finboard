@@ -1,12 +1,40 @@
 """API contract (request/response models). Separate from ORM models on purpose (ADR-0007)."""
 
+import datetime as dt
 import uuid
-from datetime import datetime
+from datetime import date, datetime
+from decimal import Decimal
 from typing import Annotated, Any, ClassVar, Self
 
-from pydantic import BaseModel, ConfigDict, Field, StringConstraints, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    PlainSerializer,
+    SecretStr,
+    StringConstraints,
+    WithJsonSchema,
+    model_validator,
+)
 
-from finboard.domain.enums import AccountType, CategoryType, JobStatus, Theme
+from finboard.domain.enums import (
+    AccountType,
+    CategorisedBy,
+    CategoryType,
+    Direction,
+    ImportSource,
+    ImportStatus,
+    JobStatus,
+    ReconStatus,
+    Theme,
+)
+
+# Money leaves the API as a decimal string with 2 places, never a float (ADR-0008).
+Money = Annotated[
+    Decimal,
+    PlainSerializer(lambda v: f"{v:.2f}", return_type=str),
+    WithJsonSchema({"type": "string", "pattern": r"^-?\d+\.\d{2}$", "examples": ["2350.00"]}),
+]
 
 Name = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=80)]
 CategoryName = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=60)]
@@ -169,3 +197,165 @@ class PreferencesUpdate(PatchModel):
 class HealthOut(BaseModel):
     status: str
     checks: dict[str, str] = {}
+
+
+# ---------------------------------------------------------------- parsers
+
+
+class ParserOut(BaseModel):
+    id: str
+    name: str
+    version: str
+    institutions: list[str]
+    account_types: list[str]
+    file_types: list[str]
+    fallback: bool
+
+
+class ParserLoadFailure(BaseModel):
+    source: str
+    reason: str
+
+
+class ParserList(BaseModel):
+    items: list[ParserOut]
+    failures: list[ParserLoadFailure]
+
+
+# ---------------------------------------------------------------- imports
+
+
+class ParserRef(BaseModel):
+    id: str
+    version: str | None
+    confidence: float | None
+
+
+class ParserCandidate(BaseModel):
+    id: str
+    name: str
+    confidence: float
+
+
+class AccountRef(BaseModel):
+    id: uuid.UUID
+    name: str
+    type: AccountType
+    masked_number: str | None
+
+
+class AccountDraft(InputModel):
+    name: Name
+    type: AccountType
+    institution: Name | None = None
+    masked_number: MaskedNumber | None = None
+
+
+class AccountSuggestion(BaseModel):
+    create: AccountDraft
+
+
+class Period(BaseModel):
+    start: date | None
+    end: date | None
+
+
+class Reconciliation(BaseModel):
+    status: ReconStatus
+    balance_kind: str | None
+    credits: Money | None
+    debits: Money | None
+    expected_closing: Money | None
+    diff: Money | None
+    first_break_seq: int | None
+    overridden: bool
+
+
+class ImportCounts(BaseModel):
+    parsed: int
+    new: int
+    duplicate: int
+    excluded: int
+    possible_duplicate: int
+    needs_review: int
+
+
+class CommitResult(BaseModel):
+    inserted: int
+    skipped: int
+    excluded: int
+
+
+class StagedRowOut(BaseModel):
+    seq: int
+    date: dt.date
+    value_date: dt.date | None
+    description: str
+    amount: Money
+    direction: Direction
+    balance_after: Money | None
+    include: bool
+    duplicate: bool
+    possible_duplicate: bool
+    category_id: uuid.UUID | None
+    categorised_by: CategorisedBy | None
+
+
+class AlreadyImported(BaseModel):
+    import_id: uuid.UUID
+    committed_at: datetime | None
+
+
+class ImportOut(BaseModel):
+    id: uuid.UUID
+    status: ImportStatus
+    source: ImportSource
+    file_name: str
+    file_size: int
+    encrypted: bool
+    archived: bool
+    created_at: datetime
+    committed_at: datetime | None
+    rolled_back_at: datetime | None
+    error: str | None
+    job: JobOut | None
+    parser: ParserRef | None
+    candidates: list[ParserCandidate]
+    institution: str | None
+    account: AccountRef | None
+    account_suggestion: AccountSuggestion | None
+    period: Period | None
+    opening: Money | None
+    closing: Money | None
+    reconciliation: Reconciliation | None
+    counts: ImportCounts | None
+    result: CommitResult | None
+    rows: list[StagedRowOut] | None = None
+    warnings: list[str]
+    file_already_imported: AlreadyImported | None
+
+
+class ImportList(BaseModel):
+    items: list[ImportOut]
+    next_cursor: str | None
+
+
+class UnlockIn(InputModel):
+    password: Annotated[SecretStr, Field(min_length=1, max_length=256)]
+
+
+class ReparseIn(InputModel):
+    parser_id: ParserId | None = None
+    account_id: uuid.UUID | None = None
+
+
+class StagedRowUpdate(PatchModel):
+    not_nullable = frozenset({"include"})
+
+    include: bool | None = None
+    category_id: uuid.UUID | None = None
+
+
+class CommitIn(InputModel):
+    override_reconciliation: bool = False
+    create_account: AccountDraft | None = None

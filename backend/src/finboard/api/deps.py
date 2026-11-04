@@ -13,8 +13,10 @@ from finboard.auth import AuthBackend, Principal
 from finboard.core.config import Settings
 from finboard.db.uow import UnitOfWork, unit_of_work
 from finboard.domain.errors import Unauthenticated
+from finboard.parsers.registry import ParserRegistry
 from finboard.services.accounts import AccountService
 from finboard.services.categories import CategoryService
+from finboard.services.imports import ImportLimits, ImportService
 from finboard.services.jobs import JobQueue, JobService
 from finboard.services.settings import SettingsService
 
@@ -65,7 +67,28 @@ def get_job_service(uow: UowDep, queue: Annotated[JobQueue, Depends(get_job_queu
     return JobService(uow, queue)
 
 
+def get_registry(request: Request) -> ParserRegistry:
+    registry: ParserRegistry = request.app.state.registry
+    return registry
+
+
+def get_import_service(
+    request: Request, uow: UowDep, queue: Annotated[JobQueue, Depends(get_job_queue)]
+) -> ImportService:
+    state = request.app.state
+    return ImportService(
+        uow,
+        blobs=state.blobs,
+        queue=queue,
+        registry=state.registry,
+        limits=ImportLimits.from_settings(state.settings),
+        secrets=state.secrets,
+    )
+
+
 SettingsDep = Annotated[Settings, Depends(get_settings)]
+RegistryDep = Annotated[ParserRegistry, Depends(get_registry)]
+ImportServiceDep = Annotated[ImportService, Depends(get_import_service)]
 AccountServiceDep = Annotated[AccountService, Depends(get_account_service)]
 CategoryServiceDep = Annotated[CategoryService, Depends(get_category_service)]
 SettingsServiceDep = Annotated[SettingsService, Depends(get_settings_service)]

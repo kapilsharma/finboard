@@ -71,7 +71,10 @@ class CategoryService:
             raise Conflict("System categories can't be deleted")
         if await self.uow.categories.has_children(category.id):
             raise Conflict("Delete or move this category's sub-categories first")
-        # From M3: refuse when transactions or rules use it (offer merge instead).
+        if await self.uow.categories.in_use(category.id):
+            # Merging into another category arrives in M5.
+            raise Conflict("Transactions use this category, so it can't be deleted; archive it")
+        # From M3: also refuse when rules use it.
         await self.uow.categories.delete(category)
         await self.uow.commit()
 

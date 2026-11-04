@@ -65,8 +65,12 @@ class AccountService:
         return account
 
     async def delete(self, account_id: uuid.UUID) -> None:
-        # From M2: refuse when the account has transactions (archive it instead).
         account = await self.get(account_id)
+        if await self.uow.accounts.has_transactions(account.id):
+            raise Conflict(
+                "This account has transactions, so it can't be deleted. Archive it instead "
+                "(set it inactive)."
+            )
         await self.uow.accounts.delete(account)
         await self.uow.commit()
 

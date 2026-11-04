@@ -5,6 +5,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
+from pydantic import SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -42,6 +43,25 @@ class Settings(BaseSettings):
 
     # Built SPA. When unset, the packaged `finboard/web/static` is used if present.
     static_dir: Path | None = None
+
+    # Encrypts statement passwords on their way to the worker (ADR-0027). `finboard init`
+    # writes one to .env. Without it, encrypted statements can't be unlocked.
+    secret_key: SecretStr | None = None
+
+    # Uploaded statements, still bank-encrypted (ADR-0026). Relative paths resolve against
+    # the working directory, which is backend/ for `finboard dev`.
+    blob_dir: Path = Path(".devdata/blobs")
+
+    # Import limits (ARCHITECTURE §7).
+    max_upload_bytes: int = 20 * 1024 * 1024
+    max_pages: int = 200
+    parse_concurrency_per_user: int = 2
+    parse_soft_time_limit: int = 60
+    parse_time_limit: int = 75
+    staged_import_ttl_days: int = 7
+    # Extra parsers as `module:attr`, loaded next to the entry points (local development of an
+    # adapter without packaging it, and tests).
+    extra_parsers: list[str] = []
 
 
 @lru_cache

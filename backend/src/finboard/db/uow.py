@@ -12,7 +12,17 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from finboard.db.engine import RLS_USER_KEY
-from finboard.db.repos import AccountRepo, CategoryRepo, JobRepo, SettingRepo, UserRepo
+from finboard.db.repos import (
+    AccountRepo,
+    CategoryRepo,
+    ImportRepo,
+    ImportRowRepo,
+    JobRepo,
+    SettingRepo,
+    StagedRowRepo,
+    TxnRepo,
+    UserRepo,
+)
 
 
 class UnitOfWork:
@@ -50,6 +60,22 @@ class UnitOfWork:
     @property
     def settings(self) -> SettingRepo:
         return SettingRepo(self.session, self.user_id)
+
+    @property
+    def imports(self) -> ImportRepo:
+        return ImportRepo(self.session, self.user_id)
+
+    @property
+    def staged_rows(self) -> StagedRowRepo:
+        return StagedRowRepo(self.session, self.user_id)
+
+    @property
+    def txns(self) -> TxnRepo:
+        return TxnRepo(self.session, self.user_id)
+
+    @property
+    def import_rows(self) -> ImportRowRepo:
+        return ImportRowRepo(self.session, self.user_id)
 
     async def commit(self) -> None:
         await self.session.commit()

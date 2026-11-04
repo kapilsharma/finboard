@@ -9,9 +9,9 @@ from hypothesis import strategies as st
 from finboard.domain.fingerprint import (
     FingerprintInput,
     dedupe_desc,
-    find_possible_duplicates,
     fingerprint,
     fingerprints,
+    possible_duplicates,
 )
 from finboard.domain.money import is_money, parse_amount, to_money
 
@@ -112,5 +112,6 @@ def test_identical_rows_in_one_statement_get_seq_in_day() -> None:
 
 
 def test_possible_duplicates_flag_same_money_different_text() -> None:
-    rows = [row(desc="SWIGGY ORDER 1"), row(desc="SWIGGY ORDER 1 TRUNCATED"), row(amount="9.00")]
-    assert find_possible_duplicates(rows) == [(0, 1)]
+    existing = [row(desc="SWIGGY ORDER 1 TRUNCATED"), row(desc="EXACT", amount="5.00")]
+    new = [row(desc="SWIGGY ORDER 1"), row(desc="exact", amount="5.00"), row(amount="9.00")]
+    assert possible_duplicates(new, existing) == {0}

@@ -63,21 +63,23 @@ def fingerprints(account_id: uuid.UUID, rows: Iterable[FingerprintInput]) -> lis
     return result
 
 
-def find_possible_duplicates(
-    rows: Sequence[FingerprintInput],
-) -> list[tuple[int, int]]:
-    """Pairs (i, j), i < j, with the same date, direction and amount but different text.
+def possible_duplicates(
+    new: Sequence[FingerprintInput], existing: Iterable[FingerprintInput]
+) -> set[int]:
+    """Indexes of `new` rows that match an existing transaction on date, direction and amount
+    but not on text.
 
-    ADR-0016 known limit: a bank may render one transaction differently in two statements.
-    The preview flags these so the user can decide.
+    ADR-0016 known limit: a bank may render one transaction differently in two statements
+    (truncation, for example), which gives it a different fingerprint. The preview flags these
+    rows so the user can decide; they are not excluded automatically.
     """
-    by_key: dict[tuple[date, str, str], list[int]] = {}
-    for index, row in enumerate(rows):
-        by_key.setdefault((row.date, row.direction, format_plain(row.amount)), []).append(index)
-    pairs: list[tuple[int, int]] = []
-    for indexes in by_key.values():
-        for a_pos, a in enumerate(indexes):
-            for b in indexes[a_pos + 1 :]:
-                if dedupe_desc(rows[a].description_raw) != dedupe_desc(rows[b].description_raw):
-                    pairs.append((a, b))
-    return pairs
+    texts: dict[tuple[date, str, str], set[str]] = {}
+    for row in existing:
+        key = (row.date, row.direction, format_plain(row.amount))
+        texts.setdefault(key, set()).add(dedupe_desc(row.description_raw))
+    flagged: set[int] = set()
+    for index, row in enumerate(new):
+        seen = texts.get((row.date, row.direction, format_plain(row.amount)))
+        if seen and dedupe_desc(row.description_raw) not in seen:
+            flagged.add(index)
+    return flagged
