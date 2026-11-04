@@ -36,3 +36,13 @@ class Unauthenticated(FinboardError):
 class ServiceUnavailable(FinboardError):
     code = "service_unavailable"
     title = "Service unavailable"
+
+
+class PayloadTooLarge(FinboardError):
+    code = "payload_too_large"
+    title = "File too large"
+
+
+class ReconciliationMismatch(Conflict):
+    code = "reconciliation_mismatch"
+    title = "The statement doesn't reconcile"
