@@ -18,6 +18,7 @@ from finboard.db.uow import UnitOfWork
 from finboard.domain import metrics
 from finboard.domain.enums import CategoryType
 from finboard.domain.errors import ValidationFailed
+from finboard.services.budgets import limits_for_month
 
 MAX_TRAIL = 36
 
@@ -121,7 +122,7 @@ class DashboardService:
         categories = {c.id: c for c in await self.uow.categories.list()}
         accounts = {a.id: a for a in await self.uow.accounts.list()}
         spent = _by_category(by_month.get(month, []), CategoryType.EXPENSE)
-        limits = await self.uow.budgets.effective(month)
+        limits = await limits_for_month(self.uow, month)
         category_rows = [
             CategoryRow(
                 categories[cid],

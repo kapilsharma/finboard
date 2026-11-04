@@ -12,8 +12,17 @@ from decimal import Decimal
 
 from finboard.db.models import Budget
 from finboard.db.uow import UnitOfWork
+from finboard.domain.budgets import BudgetEntry, effective_entries, effective_limits
 from finboard.domain.enums import CategoryType
-from finboard.domain.errors import ValidationFailed
+from finboard.domain.errors import NotFound, ValidationFailed
+
+
+def entry(budget: Budget) -> BudgetEntry:
+    return BudgetEntry(budget.category_id, budget.effective_from, budget.monthly_limit)
+
+
+async def limits_for_month(uow: UnitOfWork, month: date) -> dict[uuid.UUID, Decimal | None]:
+    return effective_limits([entry(b) for b in await uow.budgets.history()], month)
 
 
 class BudgetService:
@@ -22,7 +31,20 @@ class BudgetService:
 
     async def for_month(self, month: date) -> list[Budget]:
         """The limit row in force for each category in that month."""
-        return await self.uow.budgets.effective_rows(month.replace(day=1))
+        rows = await self.uow.budgets.history()
+        by_key = {(b.category_id, b.effective_from): b for b in rows}
+        chosen = effective_entries([entry(b) for b in rows], month)
+        return [by_key[(e.category_id, e.effective_from)] for e in chosen.values()]
+
+    async def history(self, category_id: uuid.UUID | None = None) -> list[Budget]:
+        return await self.uow.budgets.history(category_id)
+
+    async def remove_change(self, category_id: uuid.UUID, effective_from: date) -> None:
+        """Undo one limit change; the previous one applies again from that month."""
+        if not await self.uow.budgets.delete_entry(category_id, effective_from):
+            raise NotFound("No limit change for that category and month")
+        await self.uow.users.bump_data_version(self.uow.user_id)
+        await self.uow.commit()
 
     async def put(
         self, category_id: uuid.UUID, *, effective_from: date, monthly_limit: Decimal | None

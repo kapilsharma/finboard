@@ -23,10 +23,23 @@ class BlobStore(Protocol):
     async def get(self, key: str) -> bytes: ...
     async def delete(self, key: str) -> None: ...
     async def exists(self, key: str) -> bool: ...
+    async def delete_prefix(self, prefix: str) -> int: ...
+
+
+def user_prefix(user_id: uuid.UUID) -> str:
+    return f"users/{user_id}"
 
 
 def import_blob_key(user_id: uuid.UUID, import_id: uuid.UUID) -> str:
     return f"users/{user_id}/imports/{import_id}"
+
+
+def export_blob_key(user_id: uuid.UUID, job_id: uuid.UUID) -> str:
+    return f"users/{user_id}/exports/{job_id}"
+
+
+def data_import_blob_key(user_id: uuid.UUID, job_id: uuid.UUID) -> str:
+    return f"users/{user_id}/data-imports/{job_id}"
 
 
 def validate_key(key: str) -> str:
@@ -76,3 +89,19 @@ class LocalFsBlobStore:
 
     async def exists(self, key: str) -> bool:
         return await asyncio.to_thread(self._path(key).is_file)
+
+    async def delete_prefix(self, prefix: str) -> int:
+        """Delete every blob under `prefix` (one user's files). Returns how many."""
+        return await asyncio.to_thread(self._delete_tree, self._path(prefix))
+
+    @staticmethod
+    def _delete_tree(root: Path) -> int:
+        if not root.is_dir():
+            return 0
+        files = [p for p in root.rglob("*") if p.is_file()]
+        for path in files:
+            path.unlink(missing_ok=True)
+        for directory in sorted((p for p in root.rglob("*") if p.is_dir()), reverse=True):
+            directory.rmdir()
+        root.rmdir()
+        return len(files)

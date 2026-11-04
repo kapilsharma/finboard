@@ -2,6 +2,7 @@
 
 finboard serve     migrate, then serve API + built SPA on one port
 finboard worker    run a Celery worker
+finboard beat      run the housekeeping scheduler (staged-import expiry, stale jobs, old jobs)
 finboard migrate   apply database migrations
 finboard dev       migrate, then API (reload) + worker (auto-restart) + Vite, Ctrl-C stops all
 finboard openapi   print the OpenAPI schema (used to generate frontend types)
@@ -29,10 +30,20 @@ FRONTEND_DIR = BACKEND_DIR.parent / "frontend"
 IS_WINDOWS = sys.platform == "win32"
 
 
-def _migrate() -> None:
-    from finboard.db.migrate import upgrade
+def _migrate(*, backup_first: bool = False) -> None:
+    from finboard.db import migrate
 
-    upgrade(get_settings().migration_database_url)
+    settings = get_settings()
+    url = settings.migration_database_url
+    if backup_first and settings.backup_before_migrate and migrate.needs_backup(url):
+        try:
+            migrate.backup(url, settings.backup_dir, revision=migrate.current_revision(url))
+        except migrate.BackupFailed as exc:
+            sys.exit(
+                f"Not migrating: the backup before migrating failed ({exc}). Fix pg_dump, or set "
+                "FINBOARD_BACKUP_BEFORE_MIGRATE=false to migrate without a backup."
+            )
+    migrate.upgrade(url)
 
 
 def cmd_migrate(_args: argparse.Namespace) -> None:
@@ -44,7 +55,7 @@ def cmd_serve(args: argparse.Namespace) -> None:
 
     settings = get_settings()
     if not args.no_migrate:
-        _migrate()
+        _migrate(backup_first=True)  # a pg_dump first when the schema is behind (§16)
     uvicorn.run(
         "finboard.main:create_app",
         factory=True,
@@ -66,6 +77,16 @@ def cmd_worker(args: argparse.Namespace) -> None:
     # only apply when the worker runs in Docker.
     argv.append("--pool=solo" if IS_WINDOWS else f"--concurrency={args.concurrency}")
     celery_app.worker_main(argv)
+
+
+def cmd_beat(_args: argparse.Namespace) -> None:
+    """The housekeeping scheduler (ARCHITECTURE §6). Run exactly one."""
+    from finboard.jobs.celery_app import celery_app
+
+    settings = get_settings()
+    configure_logging(settings.log_level, json=settings.log_json)
+    schedule = Path(settings.blob_dir).parent / "celerybeat-schedule"
+    celery_app.start(["beat", f"--loglevel={settings.log_level}", f"--schedule={schedule}"])
 
 
 def run_dev_worker() -> None:
@@ -258,6 +279,9 @@ def main(argv: list[str] | None = None) -> None:
     )
     serve.set_defaults(func=cmd_serve)
 
+    sub.add_parser("beat", help="run the housekeeping scheduler (one only)").set_defaults(
+        func=cmd_beat
+    )
     worker = sub.add_parser("worker", help="run a background worker")
     worker.add_argument("--concurrency", type=int, default=2)
     worker.set_defaults(func=cmd_worker)

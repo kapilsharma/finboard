@@ -17,8 +17,10 @@ from finboard.domain.errors import FinboardError
 from finboard.jobs import runtime
 from finboard.jobs.celery_app import celery_app
 from finboard.jobs.queue import CeleryJobQueue
+from finboard.services.data import DataService
 from finboard.services.imports import ImportLimits, ImportService, mark_killed
 from finboard.services.jobs import JobHandler, JobQueue, run_job
+from finboard.services.maintenance import MaintenanceService
 from finboard.services.rules import RuleService
 from finboard.services.transfers import TransferService
 
@@ -143,3 +145,63 @@ def apply_rules(job_id: str, user_id: str) -> None:
 def suggest_transfers(job_id: str, user_id: str) -> None:
     """Suggest pairs of transactions that move money between the user's own accounts."""
     _run(job_id, user_id, _suggest_transfers)
+
+
+# ---------------------------------------------------------------- your data
+
+
+def _data_task(job_id: str, user_id: str, method: str) -> None:
+    async def work(ctx: runtime.WorkerContext) -> None:
+        async def handler(uow: UnitOfWork, job: Job) -> dict[str, Any]:
+            service = DataService(uow, job_queue(), ctx.blobs)
+            result: dict[str, Any] = await getattr(service, method)(job)
+            return result
+
+        await run_job(
+            ctx.sessionmaker, user_id=uuid.UUID(user_id), job_id=uuid.UUID(job_id), handler=handler
+        )
+
+    with contextlib.suppress(FinboardError):  # recorded on the job with a user-safe message
+        runtime.run(work)
+
+
+@celery_app.task(name="data.export")  # type: ignore[untyped-decorator]
+def export_data(job_id: str, user_id: str) -> None:
+    _data_task(job_id, user_id, "run_export")
+
+
+@celery_app.task(name="data.import")  # type: ignore[untyped-decorator]
+def import_data(job_id: str, user_id: str) -> None:
+    _data_task(job_id, user_id, "run_import")
+
+
+@celery_app.task(name="data.delete_user_data")  # type: ignore[untyped-decorator]
+def delete_user_data(job_id: str, user_id: str) -> None:
+    _data_task(job_id, user_id, "run_delete_all")
+
+
+# ---------------------------------------------------------------- housekeeping (Celery beat)
+
+
+def _maintenance(method: str) -> int:
+    async def work(ctx: runtime.WorkerContext) -> int:
+        service = MaintenanceService(ctx.sessionmaker, queue=job_queue(), blobs=ctx.blobs)
+        count: int = await getattr(service, method)()
+        return count
+
+    return runtime.run(work)
+
+
+@celery_app.task(name="maintenance.expire_staged")  # type: ignore[untyped-decorator]
+def expire_staged() -> int:
+    return _maintenance("expire_staged")
+
+
+@celery_app.task(name="maintenance.requeue_stale")  # type: ignore[untyped-decorator]
+def requeue_stale() -> int:
+    return _maintenance("requeue_stale")
+
+
+@celery_app.task(name="maintenance.purge_jobs")  # type: ignore[untyped-decorator]
+def purge_jobs() -> int:
+    return _maintenance("purge_jobs")

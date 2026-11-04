@@ -21,6 +21,7 @@ os.environ["FINBOARD_EXTRA_PARSERS"] = json.dumps(
         "tests.integration.fake_parsers:MismatchParser",
         "tests.integration.fake_parsers:SoftTimeoutParser",
         "tests.integration.fake_parsers:HangingParser",
+        "tests.integration.fake_parsers:OptionsParser",
     ]
 )
 

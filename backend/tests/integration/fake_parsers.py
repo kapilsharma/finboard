@@ -14,6 +14,7 @@ from datetime import date
 from decimal import Decimal
 from typing import Any
 
+from pydantic import BaseModel, Field
 from reportlab.pdfgen.canvas import Canvas
 
 from finboard.parsers.sdk import (
@@ -91,3 +92,41 @@ class HangingParser(_Marker):
                 time.sleep(0.05)
             except BaseException:  # noqa: S112
                 continue
+
+
+class OptionsParser(_Marker):
+    """Has options: proves a user's saved options reach `parse()`."""
+
+    id = "test_options"
+    name = "Test: parser with options"
+    marker = "OPTIONS-FIXTURE"
+
+    class Options(BaseModel):
+        institution_label: str = Field(default="Options Bank", max_length=40)
+        skip_zero_rows: bool = True
+
+    options_schema = Options
+
+    def parse(self, doc: OpenedDocument, options: Any) -> ParsedStatement:
+        assert isinstance(options, self.Options)
+        return ParsedStatement(
+            institution=options.institution_label,
+            balance_kind="asset",
+            account_hint="7777",
+            period_start=date(2026, 9, 1),
+            period_end=date(2026, 9, 30),
+            opening_balance=Decimal("100.00"),
+            closing_balance=Decimal("90.00"),
+            transactions=[
+                ParsedTransaction(
+                    date=date(2026, 9, 2),
+                    value_date=None,
+                    description="OPTIONS TEST ROW",
+                    amount=Decimal("10.00"),
+                    direction="debit",
+                    balance_after=Decimal("90.00"),
+                    raw={},
+                )
+            ],
+            warnings=[],
+        )

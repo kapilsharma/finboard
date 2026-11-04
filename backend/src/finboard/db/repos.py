@@ -9,9 +9,10 @@ from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date, datetime
 from decimal import Decimal
-from typing import Any
+from typing import Any, cast
 
 from sqlalchemy import (
+    Table,
     bindparam,
     delete,
     exists,
@@ -25,6 +26,7 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from finboard.db.base import Base
 from finboard.db.models import (
     Account,
     AppUser,
@@ -37,6 +39,7 @@ from finboard.db.models import (
     StagedRow,
     TransferPair,
     Txn,
+    UserParserSetting,
     UserSetting,
 )
 from finboard.domain.enums import (
@@ -46,6 +49,7 @@ from finboard.domain.enums import (
     Direction,
     ImportRowOutcome,
     ImportStatus,
+    JobStatus,
     TransferStatus,
 )
 
@@ -65,6 +69,10 @@ class UserRepo:
         self.session.add(user)
         await self.session.flush()
         return user
+
+    async def all_ids(self) -> list[uuid.UUID]:
+        """Every user (app_user has no row-level security: it holds no financial data)."""
+        return list((await self.session.scalars(select(AppUser.id).order_by(AppUser.id))).all())
 
     async def bump_data_version(self, user_id: uuid.UUID) -> None:
         """Invalidate cached views of the user's financial data (dashboard ETag)."""
@@ -189,6 +197,51 @@ class CategoryRepo(_UserScoped):
         stmt = select(exists().where(Txn.user_id == self.user_id, Txn.category_id == category_id))
         return bool(await self.session.scalar(stmt))
 
+    async def merge_into(self, source: uuid.UUID, target: Category) -> dict[str, int]:
+        """Point everything at `source` to `target`: transactions (with the target's type),
+        staged rows, rules and budget changes. Where both categories have a budget change for
+        the same month, the target's wins. Returns counts moved."""
+        u = self.user_id
+        txns = await self.session.execute(
+            update(Txn)
+            .where(Txn.user_id == u, Txn.category_id == source)
+            .values(category_id=target.id, type=target.type)
+            .execution_options(synchronize_session=False)
+        )
+        await self.session.execute(
+            update(StagedRow)
+            .where(StagedRow.user_id == u, StagedRow.category_id == source)
+            .values(category_id=target.id)
+            .execution_options(synchronize_session=False)
+        )
+        rules = await self.session.execute(
+            update(Rule)
+            .where(Rule.user_id == u, Rule.category_id == source)
+            .values(category_id=target.id)
+            .execution_options(synchronize_session=False)
+        )
+        taken = select(Budget.effective_from).where(
+            Budget.user_id == u, Budget.category_id == target.id
+        )
+        await self.session.execute(
+            delete(Budget).where(
+                Budget.user_id == u,
+                Budget.category_id == source,
+                Budget.effective_from.in_(taken.scalar_subquery()),
+            )
+        )
+        budgets = await self.session.execute(
+            update(Budget)
+            .where(Budget.user_id == u, Budget.category_id == source)
+            .values(category_id=target.id)
+            .execution_options(synchronize_session=False)
+        )
+        return {
+            "transactions": int(txns.rowcount or 0),  # type: ignore[attr-defined]
+            "rules": int(rules.rowcount or 0),  # type: ignore[attr-defined]
+            "budgets": int(budgets.rowcount or 0),  # type: ignore[attr-defined]
+        }
+
     async def used_by_rules(self, category_id: uuid.UUID) -> bool:
         stmt = select(exists().where(Rule.user_id == self.user_id, Rule.category_id == category_id))
         return bool(await self.session.scalar(stmt))
@@ -213,6 +266,26 @@ class JobRepo(_UserScoped):
             .limit(limit)
         )
         return (await self.session.scalars(stmt)).all()
+
+    async def stale_queued(self, before: datetime) -> list[Job]:
+        stmt = select(Job).where(
+            Job.user_id == self.user_id, Job.status == JobStatus.QUEUED, Job.created_at < before
+        )
+        return list((await self.session.scalars(stmt.with_for_update(skip_locked=True))).all())
+
+    async def finished_before(self, before: datetime) -> list[Job]:
+        stmt = select(Job).where(
+            Job.user_id == self.user_id,
+            Job.status.in_((JobStatus.SUCCEEDED, JobStatus.FAILED, JobStatus.CANCELLED)),
+            Job.finished_at < before,
+        )
+        return list((await self.session.scalars(stmt)).all())
+
+    async def delete_ids(self, ids: Sequence[uuid.UUID]) -> None:
+        if ids:
+            await self.session.execute(
+                delete(Job).where(Job.user_id == self.user_id, Job.id.in_(ids))
+            )
 
     async def add(self, job: Job) -> Job:
         job.user_id = self.user_id
@@ -304,6 +377,21 @@ class ImportRepo(_UserScoped):
         if for_update:
             stmt = stmt.with_for_update()
         return (await self.session.execute(stmt)).scalar_one_or_none()
+
+    async def expired(self, now: datetime) -> Sequence[ImportBatch]:
+        """Staged imports past their expiry: never committed, not being worked on."""
+        stmt = (
+            select(ImportBatch)
+            .where(
+                ImportBatch.user_id == self.user_id,
+                ImportBatch.expires_at < now,
+                ImportBatch.status.in_(
+                    (ImportStatus.PARSED, ImportStatus.NEEDS_PASSWORD, ImportStatus.FAILED)
+                ),
+            )
+            .with_for_update(skip_locked=True)
+        )
+        return (await self.session.scalars(stmt)).all()
 
     async def lock_parse_slots(self) -> None:
         """Serialise "is there a free parse slot?" decisions for this user (transaction-scoped)."""
@@ -854,25 +942,24 @@ class TransferRepo(_UserScoped):
 
 
 class BudgetRepo(_UserScoped):
-    async def effective(self, month_start: date) -> dict[uuid.UUID, Decimal | None]:
-        """Each category's limit for the month: the row with the greatest effective_from on or
-        before it. Categories without one are absent; a NULL limit means "no limit"."""
-        stmt = (
-            select(Budget.category_id, Budget.monthly_limit)
-            .where(Budget.user_id == self.user_id, Budget.effective_from <= month_start)
-            .order_by(Budget.category_id, Budget.effective_from.desc())
-            .distinct(Budget.category_id)
-        )
-        return {cid: limit for cid, limit in (await self.session.execute(stmt)).all()}
-
-    async def effective_rows(self, month_start: date) -> list[Budget]:
-        stmt = (
-            select(Budget)
-            .where(Budget.user_id == self.user_id, Budget.effective_from <= month_start)
-            .order_by(Budget.category_id, Budget.effective_from.desc())
-            .distinct(Budget.category_id)
-        )
+    async def history(self, category_id: uuid.UUID | None = None) -> list[Budget]:
+        """Every limit change, oldest first. Small (a few rows per category): the lookup for a
+        month happens in `domain.budgets`."""
+        stmt = select(Budget).where(Budget.user_id == self.user_id)
+        if category_id is not None:
+            stmt = stmt.where(Budget.category_id == category_id)
+        stmt = stmt.order_by(Budget.category_id, Budget.effective_from)
         return list((await self.session.scalars(stmt)).all())
+
+    async def delete_entry(self, category_id: uuid.UUID, effective_from: date) -> bool:
+        result = await self.session.execute(
+            delete(Budget).where(
+                Budget.user_id == self.user_id,
+                Budget.category_id == category_id,
+                Budget.effective_from == effective_from,
+            )
+        )
+        return bool(result.rowcount)  # type: ignore[attr-defined]
 
     async def put(
         self, category_id: uuid.UUID, effective_from: date, limit: Decimal | None
@@ -955,3 +1042,62 @@ class DashboardRepo(_UserScoped):
             Txn.date <= end,
         )
         return int(await self.session.scalar(stmt) or 0)
+
+
+class ParserSettingRepo(_UserScoped):
+    async def all(self) -> dict[str, UserParserSetting]:
+        stmt = select(UserParserSetting).where(UserParserSetting.user_id == self.user_id)
+        return {s.parser_id: s for s in (await self.session.scalars(stmt)).all()}
+
+    async def put(self, parser_id: str, *, enabled: bool, options: dict[str, Any]) -> None:
+        stmt = insert(UserParserSetting).values(
+            user_id=self.user_id, parser_id=parser_id, enabled=enabled, options=options
+        )
+        stmt = stmt.on_conflict_do_update(
+            index_elements=[UserParserSetting.user_id, UserParserSetting.parser_id],
+            set_={"enabled": enabled, "options": options, "updated_at": func.now()},
+        )
+        await self.session.execute(stmt)
+
+
+# ---------------------------------------------------------------- data export / import / delete
+
+
+def _table(model: type[Base]) -> Table:
+    return cast(Table, model.__table__)
+
+
+class DataRepo(_UserScoped):
+    """Whole-table operations on one user's rows, for export, import and delete-all."""
+
+    async def dump(self, model: type[Base]) -> list[dict[str, Any]]:
+        table = _table(model)
+        columns = [c for c in table.columns if c.name != "user_id"]
+        order = [c for c in table.primary_key.columns if c.name != "user_id"]
+        stmt = select(*columns).where(table.c.user_id == self.user_id).order_by(*order)
+        return [dict(row._mapping) for row in await self.session.execute(stmt)]
+
+    async def insert(self, model: type[Base], rows: Sequence[Mapping[str, Any]]) -> None:
+        table = _table(model)
+        for start in range(0, len(rows), 1000):
+            chunk = [{**row, "user_id": self.user_id} for row in rows[start : start + 1000]]
+            if chunk:
+                await self.session.execute(insert(table).values(chunk))
+
+    async def delete(self, model: type[Base], *, keep_ids: Sequence[uuid.UUID] = ()) -> int:
+        table = _table(model)
+        stmt = delete(table).where(table.c.user_id == self.user_id)
+        if keep_ids:
+            stmt = stmt.where(table.c.id.not_in(keep_ids))
+        return int((await self.session.execute(stmt)).rowcount or 0)  # type: ignore[attr-defined]
+
+    async def has_financial_data(self) -> bool:
+        """Accounts, transactions or imports (categories and rules alone don't count)."""
+        for model in (Account, Txn, ImportBatch):
+            table = _table(model)
+            found = await self.session.scalar(
+                select(exists().where(table.c.user_id == self.user_id))
+            )
+            if found:
+                return True
+        return False

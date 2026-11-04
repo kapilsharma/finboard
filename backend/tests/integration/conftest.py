@@ -90,6 +90,9 @@ TASKS = {
     "imports.process": tasks.process_import,
     "rules.apply": tasks.apply_rules,
     "transfers.suggest": tasks.suggest_transfers,
+    "data.export": tasks.export_data,
+    "data.import": tasks.import_data,
+    "data.delete_user_data": tasks.delete_user_data,
 }
 
 

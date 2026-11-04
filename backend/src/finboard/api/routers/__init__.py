@@ -5,6 +5,7 @@ from finboard.api.routers import (
     budgets,
     categories,
     dashboard,
+    data,
     health,
     imports,
     jobs,
@@ -33,5 +34,6 @@ for module in (
     rules,
     dashboard,
     budgets,
+    data,
 ):
     api_router.include_router(module.router)

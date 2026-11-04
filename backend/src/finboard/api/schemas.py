@@ -153,6 +153,17 @@ class CategoryList(BaseModel):
     items: list[CategoryOut]
 
 
+class CategoryMergeIn(InputModel):
+    into_id: uuid.UUID
+
+
+class CategoryMergeOut(BaseModel):
+    into: CategoryOut
+    transactions: int
+    rules: int
+    budgets: int
+
+
 # ---------------------------------------------------------------- jobs
 
 
@@ -223,6 +234,18 @@ class ParserOut(BaseModel):
     account_types: list[str]
     file_types: list[str]
     fallback: bool
+    enabled: bool = Field(description="Your choice: may detection pick this parser?")
+    options: dict[str, Any] = Field(description="Your options for this parser")
+    options_schema: dict[str, Any] | None = Field(
+        description="JSON Schema of the parser's options (null: it has none)"
+    )
+
+
+class ParserSettingUpdate(PatchModel):
+    not_nullable = frozenset({"enabled", "options"})
+
+    enabled: bool | None = None
+    options: dict[str, Any] | None = None
 
 
 class ParserLoadFailure(BaseModel):
@@ -718,6 +741,10 @@ class BudgetList(BaseModel):
     items: list[BudgetOut]
 
 
+class BudgetHistory(BaseModel):
+    items: list[BudgetOut]
+
+
 class BudgetPut(InputModel):
     effective_from: MonthStr = Field(description="The month the limit starts in")
     monthly_limit: MoneyIn | None = Field(description="null = no limit from this month on")
@@ -740,3 +767,7 @@ class TxnListOut(BaseModel):
     next_cursor: str | None
     total: int
     sums: TxnSums
+
+
+class DeleteAllIn(InputModel):
+    confirm: str = Field(max_length=20, description='Must be exactly "DELETE ALL"')

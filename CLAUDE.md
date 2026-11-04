@@ -25,7 +25,8 @@ for many users (async FastAPI, Postgres with row-level security, Celery workers)
   Both give Postgres on `127.0.0.1:55432` and Redis on `127.0.0.1:56379`. The defaults in
   `backend/src/finboard/core/config.py` and `backend/tests/conftest.py` match; no `.env` needed.
 - Install: `cd backend && uv sync` and `cd frontend && npm ci`.
-- Run: `cd backend && uv run finboard dev` (API :8765, worker, Vite :5173).
+- Run: `cd backend && uv run finboard dev` (API :8765, worker, Vite :5173). The housekeeping
+  scheduler is separate: `uv run finboard beat` (one only; ADR-0037).
 
 ## Definition of done
 ```

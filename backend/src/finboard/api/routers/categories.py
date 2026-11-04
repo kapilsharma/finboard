@@ -3,7 +3,14 @@ import uuid
 from fastapi import APIRouter, status
 
 from finboard.api.deps import CategoryServiceDep
-from finboard.api.schemas import CategoryCreate, CategoryList, CategoryOut, CategoryUpdate
+from finboard.api.schemas import (
+    CategoryCreate,
+    CategoryList,
+    CategoryMergeIn,
+    CategoryMergeOut,
+    CategoryOut,
+    CategoryUpdate,
+)
 
 router = APIRouter(prefix="/categories", tags=["categories"])
 
@@ -28,3 +35,12 @@ async def update_category(
 @router.delete("/{category_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_category(category_id: uuid.UUID, service: CategoryServiceDep) -> None:
     await service.delete(category_id)
+
+
+@router.post("/{category_id}/merge")
+async def merge_category(
+    category_id: uuid.UUID, body: CategoryMergeIn, service: CategoryServiceDep
+) -> CategoryMergeOut:
+    """Move this category's transactions, rules and budgets into another, then delete it."""
+    target, moved = await service.merge(category_id, body.into_id)
+    return CategoryMergeOut(into=CategoryOut.model_validate(target), **moved)

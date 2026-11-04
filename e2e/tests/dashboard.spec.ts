@@ -105,3 +105,14 @@ test('works at 400 px without horizontal scrolling', async ({ page }) => {
     expect(overflow, path).toBe(0)
   }
 })
+
+test('settings tabs have no accessibility violations (axe)', async ({ page }) => {
+  for (const tab of ['budgets', 'categories', 'parsers', 'data']) {
+    await page.goto(`/settings/${tab}`)
+    await page.waitForLoadState('networkidle')
+    const results = await new AxeBuilder({ page })
+      .withTags(['wcag2a', 'wcag2aa', 'wcag21aa'])
+      .analyze()
+    expect(results.violations.map((v) => `${tab}: ${v.id}: ${v.help}`)).toEqual([])
+  }
+})

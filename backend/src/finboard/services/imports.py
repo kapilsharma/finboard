@@ -66,6 +66,7 @@ from finboard.parsers.sdk import (
 )
 from finboard.services.categoriser import Categoriser, Decision
 from finboard.services.jobs import JobQueue, JobService
+from finboard.services.parser_settings import ParserSettingsService, parse_options
 from finboard.storage.blob import BlobNotFound, BlobStore, import_blob_key
 from finboard.storage.secrets import SecretStore
 
@@ -532,6 +533,9 @@ class ImportService:
             password = None  # drop our reference as soon as the document is open
         batch.encrypted = doc.encrypted
 
+        settings = ParserSettingsService(self.uow, self.registry)
+        choices = {c.parser.id: c for c in await settings.choices()}
+        enabled = [pid for pid, c in choices.items() if c.enabled]
         with doc:
             account = await self._account(batch.account_id) if batch.account_id else None
             if batch.requested_parser_id:
@@ -546,6 +550,7 @@ class ImportService:
                 detection = self.registry.detect(
                     doc,
                     preferred_id=account.parser_id if account else None,
+                    enabled=enabled,
                     reraise=timeout_errors,
                 )
                 chosen = detection.chosen
@@ -556,7 +561,9 @@ class ImportService:
                 confidence = chosen.confidence
             batch.candidates = _candidates(detection.candidates)
             try:
-                statement = parser.parse(doc, None)
+                # An explicitly requested parser runs even if it is switched off for detection.
+                stored = choices[parser.id].options if parser.id in choices else {}
+                statement = parser.parse(doc, parse_options(parser, stored))
             except ParserError as exc:
                 raise ImportFailed(exc.user_message) from exc
 

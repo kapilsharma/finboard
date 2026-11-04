@@ -8,6 +8,7 @@ import {
 import { errorMessage } from '../../api/client'
 import { CATEGORY_TYPE_LABELS, type Category, type CategoryType } from '../../api/types'
 import { Card, ErrorText } from '../../components/ui'
+import { MergeCategoryDialog } from './MergeCategoryDialog'
 import styles from './settings.module.css'
 
 const TYPE_ORDER: CategoryType[] = ['income', 'expense', 'investment', 'transfer']
@@ -73,10 +74,19 @@ function AddCategoryForm({ topLevel, onDone }: { topLevel: Category[]; onDone: (
   )
 }
 
-function CategoryRow({ category, isChild }: { category: Category; isChild: boolean }) {
+function CategoryRow({
+  category,
+  isChild,
+  hasChildren,
+}: {
+  category: Category
+  isChild: boolean
+  hasChildren: boolean
+}) {
   const update = useUpdateCategory()
   const remove = useDeleteCategory()
   const [editing, setEditing] = useState(false)
+  const [merging, setMerging] = useState(false)
   const [name, setName] = useState(category.name)
 
   function save(event: FormEvent) {
@@ -146,6 +156,16 @@ function CategoryRow({ category, isChild }: { category: Category; isChild: boole
             Rename
           </button>
         )}
+        {!category.is_system && !hasChildren && (
+          <button
+            className="link"
+            onClick={() => setMerging(true)}
+            aria-label={`Merge ${category.name} into another category`}
+          >
+            Merge…
+          </button>
+        )}
+        {merging && <MergeCategoryDialog category={category} onClose={() => setMerging(false)} />}
         {!category.is_system && (
           <button
             className="link danger"
@@ -197,10 +217,17 @@ export function CategoriesTab() {
             <table>
               <tbody>
                 {parents.flatMap((parent) => [
-                  <CategoryRow key={parent.id} category={parent} isChild={false} />,
+                  <CategoryRow
+                    key={parent.id}
+                    category={parent}
+                    isChild={false}
+                    hasChildren={all.some((c) => c.parent_id === parent.id)}
+                  />,
                   ...all
                     .filter((c) => c.parent_id === parent.id)
-                    .map((child) => <CategoryRow key={child.id} category={child} isChild />),
+                    .map((child) => (
+                      <CategoryRow key={child.id} category={child} isChild hasChildren={false} />
+                    )),
                 ])}
               </tbody>
             </table>
