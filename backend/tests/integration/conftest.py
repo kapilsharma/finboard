@@ -19,6 +19,7 @@ from finboard.core.config import Settings, get_settings
 from finboard.db import migrate
 from finboard.db.engine import create_engine, create_sessionmaker
 from finboard.db.uow import unit_of_work
+from finboard.jobs import tasks
 from finboard.main import create_app
 from finboard.services.users import principal_for, provision_user
 
@@ -44,9 +45,41 @@ class HeaderAuthBackend:
 class RecordingJobQueue:
     def __init__(self) -> None:
         self.enqueued: list[dict[str, object]] = []
+        self._ran = 0
+        self.failures: list[Exception] = []
 
-    async def enqueue(self, *, kind: str, job_id: uuid.UUID, user_id: uuid.UUID) -> None:
-        self.enqueued.append({"kind": kind, "job_id": job_id, "user_id": user_id})
+    async def enqueue(
+        self,
+        *,
+        kind: str,
+        job_id: uuid.UUID,
+        user_id: uuid.UUID,
+        secret_ref: str | None = None,
+    ) -> None:
+        self.enqueued.append(
+            {"kind": kind, "job_id": job_id, "user_id": user_id, "secret_ref": secret_ref}
+        )
+
+    async def drain(self) -> int:
+        """Run every queued `imports.process` job the way a worker would (the real task body,
+        in its own thread and event loop), including jobs queued while draining."""
+        ran = 0
+        while self._ran < len(self.enqueued):
+            entry = self.enqueued[self._ran]
+            self._ran += 1
+            if entry["kind"] != "imports.process":
+                continue
+            try:
+                await asyncio.to_thread(
+                    tasks.process_import.run,
+                    str(entry["job_id"]),
+                    str(entry["user_id"]),
+                    entry["secret_ref"],
+                )
+            except Exception as exc:  # a real worker logs a failed task and carries on
+                self.failures.append(exc)
+            ran += 1
+        return ran
 
 
 @pytest.fixture(scope="session")
@@ -101,8 +134,11 @@ async def bob(sessionmaker: async_sessionmaker[AsyncSession]) -> Principal:
 
 
 @pytest.fixture
-def job_queue() -> RecordingJobQueue:
-    return RecordingJobQueue()
+def job_queue(monkeypatch: pytest.MonkeyPatch) -> RecordingJobQueue:
+    queue = RecordingJobQueue()
+    # Jobs the worker starts (the next waiting upload) go to the same recording queue.
+    monkeypatch.setattr(tasks, "job_queue", lambda: queue)
+    return queue
 
 
 @pytest.fixture

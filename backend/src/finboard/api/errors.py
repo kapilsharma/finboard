@@ -13,6 +13,7 @@ from finboard.domain.errors import (
     Conflict,
     FinboardError,
     NotFound,
+    PayloadTooLarge,
     ServiceUnavailable,
     Unauthenticated,
     ValidationFailed,
@@ -28,6 +29,7 @@ _STATUS: dict[type[FinboardError], int] = {
     ValidationFailed: 422,
     Unauthenticated: 401,
     ServiceUnavailable: 503,
+    PayloadTooLarge: 413,
 }
 
 

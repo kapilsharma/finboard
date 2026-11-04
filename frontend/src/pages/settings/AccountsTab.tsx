@@ -220,8 +220,12 @@ export function AccountsTab() {
                         {account.active ? 'Active' : 'Inactive'}
                       </td>
                       <td className={styles.actions}>
-                        <button className="link" onClick={() => setEditingId(account.id)}>
-                          Edit<span className="visually-hidden"> {account.name}</span>
+                        <button
+                          className="link"
+                          onClick={() => setEditingId(account.id)}
+                          aria-label={`Edit ${account.name}`}
+                        >
+                          Edit
                         </button>
                         <button
                           className="link danger"
@@ -230,8 +234,9 @@ export function AccountsTab() {
                             if (window.confirm(`Delete the account “${account.name}”?`))
                               remove.mutate(account.id)
                           }}
+                          aria-label={`Delete ${account.name}`}
                         >
-                          Delete<span className="visually-hidden"> {account.name}</span>
+                          Delete
                         </button>
                       </td>
                     </tr>

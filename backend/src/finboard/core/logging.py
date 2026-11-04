@@ -35,7 +35,11 @@ def configure_logging(level: str = "INFO", *, json: bool = True) -> None:
         redact_sensitive,
     ]
     renderer: structlog.types.Processor = (
-        structlog.processors.JSONRenderer() if json else structlog.dev.ConsoleRenderer()
+        structlog.processors.JSONRenderer()
+        if json
+        # Plain tracebacks: the default (rich) one prints every frame's local variables, which
+        # can include passwords and statement contents.
+        else structlog.dev.ConsoleRenderer(exception_formatter=structlog.dev.plain_traceback)
     )
     structlog.configure(
         processors=[*shared, structlog.stdlib.ProcessorFormatter.wrap_for_formatter],

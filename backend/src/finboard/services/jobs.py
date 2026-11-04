@@ -24,8 +24,16 @@ JobHandler = Callable[[UnitOfWork, Job], Awaitable[dict[str, Any] | None]]
 
 
 class JobQueue(Protocol):
-    async def enqueue(self, *, kind: str, job_id: uuid.UUID, user_id: uuid.UUID) -> None:
-        """Hand the job to the workers. Arguments are ids only — never data or secrets."""
+    async def enqueue(
+        self,
+        *,
+        kind: str,
+        job_id: uuid.UUID,
+        user_id: uuid.UUID,
+        secret_ref: str | None = None,
+    ) -> None:
+        """Hand the job to the workers. Arguments are ids only — never data or secrets.
+        `secret_ref` is an opaque, single-use reference to a short-lived secret (ADR-0027)."""
         ...
 
 
@@ -35,19 +43,31 @@ class JobService:
         self.queue = queue
 
     async def submit(self, kind: str, params: dict[str, Any] | None = None) -> Job:
-        job = await self.uow.jobs.add(Job(kind=kind, status=JobStatus.QUEUED, params=params or {}))
+        job = await self.create(kind, params)
+        await self.dispatch(job)
+        return job
+
+    async def create(self, kind: str, params: dict[str, Any] | None = None) -> Job:
+        """Add a queued job to the current transaction (not committed, not enqueued yet)."""
+        return await self.uow.jobs.add(Job(kind=kind, status=JobStatus.QUEUED, params=params or {}))
+
+    async def dispatch(self, job: Job, *, secret_ref: str | None = None) -> None:
+        """Commit (with whatever else the caller changed), then enqueue."""
         # Commit first: the worker must be able to read the job as soon as it is enqueued.
         await self.uow.commit()
         try:
-            await self.queue.enqueue(kind=kind, job_id=job.id, user_id=job.user_id)
+            await self.queue.enqueue(
+                kind=job.kind, job_id=job.id, user_id=job.user_id, secret_ref=secret_ref
+            )
         except Exception as exc:
-            log.error("job.enqueue_failed", job_id=str(job.id), kind=kind, error=type(exc).__name__)
+            log.error(
+                "job.enqueue_failed", job_id=str(job.id), kind=job.kind, error=type(exc).__name__
+            )
             job.status = JobStatus.FAILED
             job.error = "The background worker queue is unavailable"
             job.finished_at = datetime.now(UTC)
             await self.uow.commit()
             raise ServiceUnavailable("The background worker queue is unavailable") from exc
-        return job
 
     async def get(self, job_id: uuid.UUID) -> Job:
         job = await self.uow.jobs.get(job_id)
@@ -96,7 +116,13 @@ async def run_job(
             job.error = exc.detail if isinstance(exc, FinboardError) else "Internal error"
             job.finished_at = datetime.now(UTC)
             await uow.commit()
-        log.exception("job.failed", kind=job.kind)
+        if isinstance(exc, FinboardError):  # expected, with a user-safe message
+            log.warning("job.failed", kind=job.kind, code=exc.code)
+        else:
+            # Exception messages and tracebacks can carry statement data: type at ERROR,
+            # traceback only at DEBUG (ARCHITECTURE §8).
+            log.error("job.failed", kind=job.kind, error=type(exc).__name__)
+            log.debug("job.failed_traceback", kind=job.kind, exc_info=True)
         raise
 
 

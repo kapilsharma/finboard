@@ -165,6 +165,8 @@ flowchart TD
 
 import-linter enforces this graph in CI. The services → jobs edge goes through a small `JobQueue` protocol, so tests can replace it with an in-memory fake.
 
+*As built (M2):* `storage` (`BlobStore`, the password handoff) and `parsers` sit outside the layer chain in `pyproject.toml`; they are leaf packages that import only `core` and `parsers.sdk`, so `services` and `jobs` can use them without breaking the chain. The "domain is pure" and "services know nothing about HTTP or Celery" rules are separate forbidden-import contracts. `finboard.parsers.inspect` (the `inspect-layout` masker) lives next to the registry and is used only by the CLI.
+
 ---
 
 ## 4. FastAPI at scale: request lifecycle & patterns
@@ -403,12 +405,14 @@ Parsers stay **synchronous and pure**: no DB, no network, no async. They run ins
 ### Discovery, versioning, errors
 - **Discovery** goes through `importlib.metadata.entry_points(group="finboard.parsers")` for built-ins and third-party parsers alike ([ADR-0009](adr/0009-parser-discovery-entry-points.md)). The registry is global, so every user sees the same installed parsers. Enablement and options are **per user** (`user_parser_setting`).
 - **Detection** ranks every enabled parser that accepts the file type. The top score at or above 0.5 wins, and if the top two are within 0.1 the user chooses. An account's `parser_id` adds +0.1. The user can override.
+- **Fallback parsers.** A parser with `fallback = True` (today only `generic_table`) is chosen only when no bank-specific parser scores 0.5 or more, and never counts towards "ambiguous". Bank adapters therefore only compete with each other ([ADR-0033](adr/0033-fallback-parsers-and-fixture-discovery.md)).
+- **Time limits.** A parse gets a soft limit (60 s) and a hard limit (75 s). Each user has at most `parse_concurrency_per_user` (2) imports `queued` or `processing`; extra uploads wait as `uploaded` and start when a slot frees. A hard kill is recorded by the task's `Request.on_timeout` in the worker's parent process ([ADR-0034](adr/0034-parse-cap-and-hard-kill.md)).
 - **Versioning.** `api_version` gates loading. Parser `version` is stored on each import, which enables "re-parse with newer adapter" later.
 - **Errors.** `ParserError(user_message)` is an expected failure ("not my layout", "scanned PDF — no text layer"). Any other exception, or the soft time limit, sets `failed` with a sanitised message. Tracebacks are logged at DEBUG only.
 
 ### Synthetic-fixture testing
-Each adapter ships `fixtures.py` implementing `FixtureBuilder.build(seed, rows, encrypted_with) -> (pdf_bytes, expected ParsedStatement)` with reportlab. Builders reproduce the bank's **layout** with **fake data** and write to `tmp_path` only. The **contract suite** runs for every registered parser and several seeds. It checks:
-- the detect matrix: own fixture ≥ 0.8, others' fixtures < 0.5;
+Each adapter ships `fixtures.py` implementing `FixtureBuilder.build(seed, rows, encrypted_with) -> (pdf_bytes, expected ParsedStatement)` with reportlab, registered under the `finboard.parser_fixtures` entry-point group with the parser's id. The suite fails for a registered parser without a builder ([ADR-0033](adr/0033-fallback-parsers-and-fixture-discovery.md)). The contributor template (`parsers/builtin/_template`) is not registered but is always included. Builders reproduce the bank's **layout** with **fake data** and write to `tmp_path` only. The **contract suite** runs for every registered parser and several seeds. It checks:
+- the detect matrix: own fixture ≥ 0.8, other *specific* parsers < 0.5 (fallbacks may match anything), and the registry picks the owner;
 - exact parse equality;
 - **reconciliation** (asset/liability) and running-balance consistency;
 - invariants: amounts > 0 at 2 dp, dates inside the period, hint ≤ 4 digits;
@@ -603,8 +607,8 @@ Design target: **hundreds of users, each with up to ~50k transactions** (≈ 25M
 | Golden | pytest | sample CSV → mockup numbers |
 | AI (optional) | pytest with a fake/recorded chat model; `finboard ai eval` (manual, live) | suggestion accuracy, SQL guard corpus, privacy canaries, AI tenancy; live execution accuracy → `docs/ai-eval.md` (§18) |
 | Load / perf | Locust 2; pytest `perf` marker | budgets in §14 (perf marker in CI; Locust on demand) |
-| Frontend | Vitest 5, Testing Library, a small `fetch` stub (MSW 2 once API mocking grows) | `format.ts`, LimitBar, DeltaBadge, URL-state filters, `useJob` polling, `aria-sort` |
-| E2E | Playwright | against `docker compose up`: upload encrypted synthetic PDF → unlock → preview reconciles → commit → review + rule → dashboard figures → re-import skipped. axe scan in light and dark |
+| Frontend | Vitest 5, Testing Library, a small `fetch` stub (`mockApi()`; MSW 2 once API mocking grows) | `format.ts`, LimitBar, DeltaBadge, URL-state filters, `useJob` polling, `aria-sort` |
+| E2E | Playwright (`e2e/`) | M2: against `finboard serve` + a worker on `finboard_test` (`e2e/stack.py`): encrypted synthetic PDF → unlock → commit → re-import skipped. From M7, against `docker compose up`: upload encrypted synthetic PDF → unlock → preview reconciles → commit → review + rule → dashboard figures → re-import skipped. axe scan in light and dark |
 | Static | ruff, mypy, import-linter, oxlint, Prettier 3, `tsc` | |
 
 ```mermaid
@@ -613,7 +617,7 @@ flowchart LR
   I["integration + tenancy + golden<br/>ubuntu × py{3.12, 3.14}<br/>services: postgres:18, redis:7"] --> E
   U["pure unit + parser contract<br/>{ubuntu, macos, windows} × py3.14"] --> E
   F["frontend unit + build<br/>{ubuntu, macos, windows} × node 24"] --> E
-  E["e2e: compose stack + Playwright<br/>ubuntu"] --> D["docker image build (+ push on tag)"]
+  E["e2e: Playwright<br/>finboard serve now, compose stack from M7<br/>ubuntu"] --> D["docker image build (+ push on tag)"]
   P["privacy checks"]
 ```
 

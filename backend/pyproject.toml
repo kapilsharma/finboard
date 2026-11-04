@@ -15,10 +15,22 @@ dependencies = [
     "structlog>=24.4",
     "celery[redis]>=5.4,<6",
     "redis>=5.2",
+    "pdfplumber>=0.11.10",
+    "pikepdf>=10.17.0",
+    "cryptography>=50.0.2",
+    "python-multipart>=0.0.33",
 ]
 
 [project.scripts]
 finboard = "finboard.cli:main"
+
+# Parsers are discovered through entry points, built-ins included (ADR-0009).
+[project.entry-points."finboard.parsers"]
+generic_table = "finboard.parsers.builtin.generic_table.parser:GenericTableParser"
+
+# Synthetic fixture builders for the contract suite, keyed by parser id (ADR-0033).
+[project.entry-points."finboard.parser_fixtures"]
+generic_table = "finboard.parsers.builtin.generic_table.fixtures:GenericTableFixtures"
 
 [dependency-groups]
 dev = [
@@ -29,6 +41,9 @@ dev = [
     "ruff>=0.8",
     "mypy>=1.13",
     "import-linter>=2.1",
+    "reportlab>=5.1.0",
+    "pytest-socket>=0.8.1",
+    "types-reportlab>=5.0.0.20261008",
 ]
 
 [build-system]

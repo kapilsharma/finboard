@@ -32,16 +32,27 @@ export class ApiError extends Error {
 
 export async function api<T>(
   path: string,
-  { method = 'GET', body }: { method?: string; body?: unknown } = {},
+  {
+    method = 'GET',
+    body,
+    form,
+    headers: extraHeaders,
+  }: {
+    method?: string
+    body?: unknown
+    /** multipart/form-data body (file uploads); the browser sets the boundary header. */
+    form?: FormData
+    headers?: Record<string, string>
+  } = {},
 ): Promise<T> {
-  const headers: Record<string, string> = { Accept: 'application/json' }
+  const headers: Record<string, string> = { Accept: 'application/json', ...extraHeaders }
   if (!SAFE_METHODS.has(method)) headers['X-Finboard-Client'] = '1' // ADR-0015
   if (body !== undefined) headers['Content-Type'] = 'application/json'
 
   const response = await fetch(`${API_BASE}${path}`, {
     method,
     headers,
-    body: body === undefined ? undefined : JSON.stringify(body),
+    body: form ?? (body === undefined ? undefined : JSON.stringify(body)),
   })
 
   if (!response.ok) {

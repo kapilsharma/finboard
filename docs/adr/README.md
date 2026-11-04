@@ -37,3 +37,5 @@ Status values: **Accepted (given)** = fixed by HANDOVER §2 · **Accepted** · *
 | [0030](0030-assistive-ai-opt-in.md) | Assistive AI, opt-in, strict privacy boundary | Accepted (owner) |
 | [0031](0031-pgvector-embeddings.md) | pgvector for embeddings in Postgres | Accepted (owner) |
 | [0032](0032-nl-analytics-langgraph.md) | Ask Finboard: spec-first NL analytics with LangGraph | Accepted (owner) |
+| [0033](0033-fallback-parsers-and-fixture-discovery.md) | Fallback parsers; fixture builders via entry points | Accepted |
+| [0034](0034-parse-cap-and-hard-kill.md) | Per-user parse cap; recording hard-killed parses | Accepted |

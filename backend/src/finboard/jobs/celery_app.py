@@ -20,6 +20,10 @@ def create_celery(settings: Settings) -> Celery:
         worker_prefetch_multiplier=1,
         task_default_queue=DEFAULT_QUEUE,
         task_routes={"imports.*": {"queue": PARSE_QUEUE}},
+        # Untrusted PDFs: recycle worker processes so a leak or a pathological file can't
+        # accumulate (ARCHITECTURE §6). Memory is in KiB.
+        worker_max_tasks_per_child=50,
+        worker_max_memory_per_child=512_000,
         broker_connection_retry_on_startup=True,
         worker_hijack_root_logger=False,
         timezone="UTC",
