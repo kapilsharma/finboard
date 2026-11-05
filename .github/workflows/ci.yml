@@ -65,7 +65,7 @@ jobs:
         python: ["3.12", "3.14"]
     services:
       postgres:
-        image: postgres:18
+        image: pgvector/pgvector:pg18-trixie
         env:
           POSTGRES_PASSWORD: postgres_dev
         ports: ["55432:5432"]
@@ -145,7 +145,7 @@ jobs:
     runs-on: ubuntu-latest
     services:
       postgres:
-        image: postgres:18
+        image: pgvector/pgvector:pg18-trixie
         env:
           POSTGRES_PASSWORD: postgres_dev
         ports: ["55432:5432"]

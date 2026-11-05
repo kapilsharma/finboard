@@ -4,7 +4,7 @@ name: finboard-dev
 
 services:
   db:
-    image: postgres:18
+    image: pgvector/pgvector:pg18-trixie  # Postgres 18 + pgvector (ADR-0031)
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres_dev
