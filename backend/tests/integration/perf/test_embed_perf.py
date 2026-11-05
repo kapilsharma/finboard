@@ -13,6 +13,7 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from finboard.ai import embeddings, evaluation
+from finboard.ai.text import embedding_key
 from finboard.auth import Principal
 from finboard.core.config import Settings
 from finboard.db.uow import unit_of_work
@@ -55,7 +56,7 @@ async def test_embed_5k_within_budget(
     elapsed = time.perf_counter() - started
     assert not job_queue.failures
     async with unit_of_work(sessionmaker, alice.user_id) as uow:
-        assert await uow.embeddings.counts(settings.embed_model) == (TXNS, TXNS)
+        assert await uow.embeddings.counts(embedding_key(settings.embed_model)) == (TXNS, TXNS)
         assert (await uow.jobs.get(job.id)) is not None
     # ru_maxrss is the whole test process (an upper bound for a worker): KB on Linux.
     peak_mb = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / (

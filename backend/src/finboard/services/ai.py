@@ -20,6 +20,7 @@ from typing import Any, Literal
 import structlog
 
 from finboard.ai.suggest import SHARPNESS, K, vote
+from finboard.ai.text import embedding_key, match_text
 from finboard.core.config import Settings
 from finboard.db.models import Category, Job
 from finboard.db.repos import NeighbourRow
@@ -34,8 +35,10 @@ ASK_KEY = "ai.ask"
 EMBED_TASK = "ai.embed"  # after a commit: embed what isn't yet
 EMBED_ALL_TASK = "ai.embed_all"  # backfill, and re-embed after a model change
 EMBED_BATCH = 256
-# Below these, a neighbour doesn't vote (no suggestion beats a weak guess). docs/ai-eval.md.
-MIN_SIMILARITY = {"embedding": 0.5, "trigram": 0.25}
+# Below these, a neighbour doesn't vote, so a merchant unlike anything categorised gets no
+# suggestion. Calibrated with never-seen merchants for the default model (docs/ai-eval.md);
+# trigram similarity can't tell them apart, so it never abstains.
+MIN_SIMILARITY = {"embedding": 0.45, "trigram": 0.0}
 
 Method = Literal["embedding", "trigram"]
 
@@ -61,6 +64,10 @@ class AiConfig:
             ask_sql=s.ai_ask_sql,
             ai_model=s.ai_model if s.ai_ask == "gemini" else s.ollama_model,
         )
+
+    @property
+    def embedding_key(self) -> str:
+        return embedding_key(self.embed_model)
 
     @property
     def uses_embeddings(self) -> bool:
@@ -99,7 +106,7 @@ class AiSettingsService:
 
     async def status(self) -> AiStatus:
         stored = await self.uow.settings.all()
-        embedded, total = await self.uow.embeddings.counts(self.config.embed_model)
+        embedded, total = await self.uow.embeddings.counts(self.config.embedding_key)
         return AiStatus(
             suggestions_available=self.config.suggestions,
             suggestions_enabled=self.config.suggestions and stored.get(SUGGESTIONS_KEY) is True,
@@ -156,19 +163,24 @@ class SuggestionService:
             or (await self.uow.settings.all()).get(SUGGESTIONS_KEY) is not True
         ):
             raise AiFeatureOff("Category suggestions are off (Settings > AI)")
-        if await self.uow.txns.get(txn_id) is None:
+        txn = await self.uow.txns.get(txn_id)
+        if txn is None:
             raise NotFound("Transaction not found")
         method: Method
+        if not match_text(txn.description_norm):  # no merchant words: nothing to compare
+            return Suggestions(
+                "trigram" if self.config.suggest_method == "trigram" else "embedding", []
+            )
         if self.config.suggest_method == "trigram":
             method = "trigram"
-        elif await self.uow.embeddings.has_embedding(txn_id, self.config.embed_model):
+        elif await self.uow.embeddings.has_embedding(txn_id, self.config.embedding_key):
             method = "embedding"
         elif self.config.suggest_method == "embedding":
             return Suggestions("embedding", [])  # not embedded yet
         else:
             method = "trigram"  # auto: until this transaction has an embedding
         rows = (
-            await self.uow.embeddings.neighbours_by_embedding(txn_id, self.config.embed_model, K)
+            await self.uow.embeddings.neighbours_by_embedding(txn_id, self.config.embedding_key, K)
             if method == "embedding"
             else await self.uow.embeddings.neighbours_by_trigram(txn_id, K)
         )
@@ -208,27 +220,28 @@ class EmbeddingService:
 
     async def run(self, _job: Job) -> dict[str, Any]:
         """Embed every transaction without a current embedding, a batch per transaction.
-        Only the normalised description is embedded: no amounts, no reference numbers."""
+        Only the merchant words of the normalised description are embedded (`ai.text`): no
+        amounts, reference numbers or narration boilerplate."""
         from finboard.ai.embeddings import EmbeddingsUnavailable, embed
 
         if not self.config.uses_embeddings:
             return {"embedded": 0, "skipped": "suggestions use trigram similarity"}
         done = 0
         while True:
-            batch = await self.uow.embeddings.to_embed(self.config.embed_model, EMBED_BATCH)
+            batch = await self.uow.embeddings.to_embed(self.config.embedding_key, EMBED_BATCH)
             if not batch:
                 break
             try:
                 vectors = await asyncio.to_thread(
                     embed,
-                    [text for _, text in batch],
+                    [match_text(text) or text for _, text in batch],
                     model=self.config.embed_model,
                     cache_dir=self.config.model_dir,
                 )
             except EmbeddingsUnavailable as exc:
                 raise EmbeddingFailed(str(exc)) from None
             await self.uow.embeddings.upsert(
-                self.config.embed_model,
+                self.config.embedding_key,
                 [(tid, v) for (tid, _), v in zip(batch, vectors, strict=True)],
             )
             await self.uow.commit()

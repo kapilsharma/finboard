@@ -192,7 +192,7 @@ def cmd_ai_eval_suggestions(args: argparse.Namespace) -> None:
 
         methods[model] = evaluation.embedding_matrix_for(run)
     try:
-        report = evaluation.report(evaluation.compare(methods))
+        report = evaluation.report(evaluation.compare(methods), default=settings.embed_model)
     except EmbeddingsUnavailable as exc:
         sys.exit(f"{exc} (fetch each model first: finboard ai fetch-model --model NAME)")
     out = Path(args.out)

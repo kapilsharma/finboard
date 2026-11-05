@@ -13,17 +13,29 @@ which it never saw.
 | Method | Sharpness | Seed 11 | Seed 23 | Seed 41 | Seed 97 | Mean |
 |---|---|---|---|---|---|---|
 | trigram | 3 | 0.768 | 0.767 | 0.766 | 0.753 | **0.764** |
-| sentence-transformers/all-MiniLM-L6-v2 | 8 | 0.835 | 0.843 | 0.829 | 0.821 | **0.832** |
-| BAAI/bge-small-en-v1.5 | 24 | 0.765 | 0.772 | 0.780 | 0.755 | **0.768** |
+| sentence-transformers/all-MiniLM-L6-v2 | 3 | 0.957 | 0.946 | 0.951 | 0.940 | **0.948** |
+| BAAI/bge-small-en-v1.5 | 6 | 0.954 | 0.946 | 0.954 | 0.957 | **0.953** |
+
+## When a suggestion is shown (held-out mean)
+
+Neighbours less similar than the cut-off don't vote, so a transaction unlike anything
+categorised gets no suggestion. The cut-off is tuned on seed 7 for utility (+1 right suggestion, -1 wrong one, -1 any suggestion for one
+of 16 never-categorised merchants, 0 no suggestion).
+
+| Method | Cut-off | Shown | Right when shown | Unseen merchants given one | Utility |
+|---|---|---|---|---|---|
+| trigram | 0.00 | 0.999 | 0.764 | 1.000 | 0.405 |
+| sentence-transformers/all-MiniLM-L6-v2 | 0.45 | 0.970 | 0.952 | 0.547 | 0.763 |
+| BAAI/bge-small-en-v1.5 | 0.70 | 0.959 | 0.961 | 0.422 | 0.780 |
 
 ## By kind of variant (mean over held-out seeds)
 
 | Method | extra_tokens | no_spaces | other_handle | reordered | truncated | typo |
 |---|---|---|---|---|---|---|
 | trigram | 0.855 | 0.790 | 0.876 | 0.895 | 0.469 | 0.721 |
-| sentence-transformers/all-MiniLM-L6-v2 | 0.965 | 0.782 | 0.990 | 0.950 | 0.645 | 0.693 |
-| BAAI/bge-small-en-v1.5 | 0.930 | 0.698 | 0.915 | 0.895 | 0.551 | 0.650 |
+| sentence-transformers/all-MiniLM-L6-v2 | 1.000 | 0.945 | 1.000 | 1.000 | 0.871 | 0.886 |
+| BAAI/bge-small-en-v1.5 | 1.000 | 0.937 | 1.000 | 1.000 | 0.899 | 0.890 |
 
 ## Verdict
 
-**sentence-transformers/all-MiniLM-L6-v2** wins (0.832 vs the trigram baseline's 0.764), so suggestions use embeddings when the model is available.
+Embeddings beat the trigram baseline (0.764), so suggestions use them when the model is available. The default, **sentence-transformers/all-MiniLM-L6-v2**, scores 0.948; BAAI/bge-small-en-v1.5 scores 0.953, within seed-to-seed noise (< 0.01), so the default stays.

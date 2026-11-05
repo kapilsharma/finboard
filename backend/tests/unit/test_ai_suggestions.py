@@ -30,7 +30,7 @@ def test_vote_ranks_by_weighted_share() -> None:
 def test_sharpness_lets_one_close_neighbour_beat_many_loose_ones() -> None:
     neighbours = [n(A, 0.95), *(n(B, 0.6) for _ in range(4))]
     assert vote(neighbours, sharpness=1.0)[0].category_id == B
-    assert vote(neighbours, sharpness=SHARPNESS["embedding"])[0].category_id == A
+    assert vote(neighbours, sharpness=8.0)[0].category_id == A
 
 
 def test_nothing_alike_gives_no_suggestion() -> None:
@@ -114,3 +114,19 @@ def test_default_model_beats_trigram_offline() -> None:
         )
     }
     assert results["embedding"].mean > results["trigram"].mean
+
+
+def test_trigram_parameters_match_the_evaluation() -> None:
+    """The served sharpness and cut-off are the ones the evaluation picks."""
+    from finboard.services.ai import MIN_SIMILARITY
+
+    (result,) = evaluation.compare({"trigram": evaluation.trigram_matrix})
+    assert result.sharpness == SHARPNESS["trigram"]
+    assert result.min_similarity == MIN_SIMILARITY["trigram"]
+
+
+def test_unseen_merchants_are_new() -> None:
+    labelled, _ = evaluation.dataset(7)
+    known = {e.merchant for e in labelled}
+    assert not known & set(evaluation.UNSEEN_MERCHANTS)
+    assert len(evaluation.unseen(7)) == 2 * len(evaluation.UNSEEN_MERCHANTS)

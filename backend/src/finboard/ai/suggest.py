@@ -5,10 +5,9 @@ trigram similarity), each neighbour votes for its category with weight similarit
 Categories are ranked by their share of the total weight; the top 3 whose share reaches a
 floor are suggested, each with its closest examples as the "why".
 
-Sharpness differs per method because the similarity scales differ: embedding cosines of
-bank narrations sit in a narrow band (about 0.5-0.9), so without sharpening the shared
-boilerplate of other merchants (UPI, YBL, PAYMENT) outvotes the right one. The values were
-tuned on one evaluation seed and checked on four others (docs/ai-eval.md).
+Sharpness differs per method because the similarity scales differ: the
+scales of cosine and trigram similarity differ. The values were tuned on one evaluation
+seed and checked on four others (docs/ai-eval.md).
 """
 
 from __future__ import annotations
@@ -21,7 +20,9 @@ K = 10
 MAX_SUGGESTIONS = 3
 CONFIDENCE_FLOOR = 0.2
 MAX_EXAMPLES = 3
-SHARPNESS = {"trigram": 3.0, "embedding": 8.0}
+# Tuned per method by `finboard ai eval-suggestions` (docs/ai-eval.md); a unit test keeps
+# these equal to what the evaluation picks.
+SHARPNESS = {"trigram": 3.0, "embedding": 3.0}
 
 
 @dataclass(frozen=True, slots=True)

@@ -5,6 +5,7 @@ from __future__ import annotations
 import httpx
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from finboard.ai.text import embedding_key
 from finboard.auth import Principal
 from finboard.db.uow import unit_of_work
 
@@ -65,4 +66,4 @@ async def test_neighbours_never_cross_users(
 
 def ai_client_model(client: httpx.AsyncClient) -> str:
     app = client._transport.app  # type: ignore[attr-defined]
-    return str(app.state.settings.embed_model)
+    return embedding_key(str(app.state.settings.embed_model))
