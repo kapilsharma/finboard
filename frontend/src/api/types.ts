@@ -103,3 +103,16 @@ export const DIRECTION_LABELS: Record<Direction, string> = {
   debit: 'Money out',
   credit: 'Money in',
 }
+
+// Optional AI (M3a, M4a): off unless the server offers it and the user turns it on.
+export type AiStatus = Schemas['AiStatusOut']
+export type AiSettings = Schemas['AiSettingsIn']
+export type Suggestions = Schemas['SuggestionsOut']
+export type CategorySuggestion = Schemas['CategorySuggestionOut']
+export type AskAnswer = Schemas['AskOut']
+export type AskQuery = Schemas['AskQueryOut']
+export type AskResult = Schemas['AskResultOut']
+export type AskChart = Schemas['ChartOut']
+export type AskHistory = Schemas['AskHistoryOut']
+export type Widget = Schemas['WidgetOut']
+export type WidgetList = Schemas['WidgetListOut']

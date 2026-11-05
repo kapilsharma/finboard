@@ -41,6 +41,13 @@ import {
   type CategoryMergeResult,
   type Parser,
   type ParserSettingUpdate,
+  type AiSettings,
+  type AiStatus,
+  type AskAnswer,
+  type AskHistory,
+  type Suggestions,
+  type Widget,
+  type WidgetList,
 } from './types'
 
 export const queryKeys = {
@@ -65,6 +72,10 @@ export const queryKeys = {
   transactions: ['transactions'] as const,
   transactionList: (params: string) => ['transactions', 'list', params] as const,
   budgets: ['budgets'] as const,
+  aiStatus: ['ai', 'status'] as const,
+  suggestions: (txnId: string) => ['ai', 'suggestions', txnId] as const,
+  askHistory: ['ai', 'ask', 'history'] as const,
+  widgets: ['ai', 'widgets'] as const,
 }
 
 /** How often in-flight work is polled. Tests shorten it. */
@@ -295,6 +306,7 @@ function invalidateCategorisation(qc: ReturnType<typeof useQueryClient>) {
   void qc.invalidateQueries({ queryKey: queryKeys.rules })
   void qc.invalidateQueries({ queryKey: queryKeys.review })
   void qc.invalidateQueries({ queryKey: queryKeys.transfers })
+  void qc.invalidateQueries({ queryKey: ['ai'] }) // suggestions and pinned widgets
 }
 
 export function useRules() {
@@ -632,4 +644,82 @@ export function useDeleteAll() {
 export function useRefreshEverything() {
   const qc = useQueryClient()
   return useCallback(() => void qc.invalidateQueries(), [qc])
+}
+
+// ------------------------------------------------------------------ optional AI (M3a, M4a)
+
+export function useAiStatus() {
+  return useQuery({ queryKey: queryKeys.aiStatus, queryFn: () => api<AiStatus>('/ai/status') })
+}
+
+export function useUpdateAiSettings() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (body: AiSettings) => api<AiStatus>('/ai/settings', { method: 'PATCH', body }),
+    onSuccess: (status) => {
+      qc.setQueryData(queryKeys.aiStatus, status)
+      void qc.invalidateQueries({ queryKey: ['ai'] })
+    },
+  })
+}
+
+/** Suggestions for one transaction; only asked for when the user turned them on. */
+export function useSuggestions(txnId: string | null, enabled: boolean) {
+  return useQuery({
+    queryKey: queryKeys.suggestions(txnId ?? ''),
+    queryFn: () => api<Suggestions>(`/transactions/${txnId}/suggestions`),
+    enabled: enabled && txnId !== null,
+    staleTime: 60_000,
+  })
+}
+
+export function useAsk() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (question: string) =>
+      api<AskAnswer>('/ask', { method: 'POST', body: { question } }),
+    onSettled: () => qc.invalidateQueries({ queryKey: queryKeys.askHistory }),
+  })
+}
+
+export function useAskHistory(enabled: boolean) {
+  return useQuery({
+    queryKey: queryKeys.askHistory,
+    queryFn: () => api<AskHistory>('/ask/history'),
+    enabled,
+  })
+}
+
+export function useClearAskHistory() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: () => api<void>('/ask/history', { method: 'DELETE' }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.askHistory }),
+  })
+}
+
+export function usePinQuestion() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, title }: { id: string; title?: string }) =>
+      api<Widget>(`/ask/${id}/pin`, { method: 'POST', body: { title: title ?? null } }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['ai'] }),
+  })
+}
+
+/** Pinned questions, re-run on the server with no AI call. Refreshed with the dashboard. */
+export function useWidgets(enabled: boolean) {
+  return useQuery({
+    queryKey: queryKeys.widgets,
+    queryFn: () => api<WidgetList>('/dashboard/widgets'),
+    enabled,
+  })
+}
+
+export function useDeleteWidget() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: string) => api<void>(`/dashboard/widgets/${id}`, { method: 'DELETE' }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['ai'] }),
+  })
 }

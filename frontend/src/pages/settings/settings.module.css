@@ -215,3 +215,16 @@
 .buttonLink:hover {
   background: var(--surface-muted);
 }
+
+.aiStack {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.aiToggle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-weight: 600;
+  margin: var(--space-2) 0;
+}

@@ -14,6 +14,7 @@ import { CategoryPicker } from '../CategoryPicker'
 import { Modal } from '../Modal'
 import { ErrorText } from '../ui'
 import { RuleTestSummary } from './RuleTestSummary'
+import { SuggestionList } from './SuggestionList'
 import { useJobRunner } from './useJobRunner'
 import styles from './categorise.module.css'
 
@@ -98,6 +99,16 @@ export function CategoriseDialog({
     }
   }
 
+  async function accept(id: string) {
+    setError(null)
+    try {
+      await bulk.mutateAsync({ ids: transactions.map((t) => t.id), category_id: id })
+      onClose()
+    } catch (e) {
+      setError(errorMessage(e))
+    }
+  }
+
   const first = transactions[0]
   const title =
     transactions.length === 1
@@ -116,6 +127,17 @@ export function CategoriseDialog({
                 {transactions.length > 1 && ` · and ${transactions.length - 1} more`}
               </span>
             </p>
+          )}
+          {first && (
+            <SuggestionList
+              transactionId={first.id}
+              disabled={busy}
+              onAccept={(s) => void accept(s.category.id)}
+              onMakeRule={(s) => {
+                setCategoryId(s.category.id)
+                setMakeRule(true)
+              }}
+            />
           )}
           <label className={styles.field}>
             Category

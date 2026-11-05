@@ -8,6 +8,7 @@ import { PreferencesTab } from './PreferencesTab'
 import { RulesTab } from './rules/RulesTab'
 import { BudgetsTab } from './BudgetsTab'
 import { DataTab } from './DataTab'
+import { AiTab } from './AiTab'
 import styles from './settings.module.css'
 
 const TABS = [
@@ -19,6 +20,7 @@ const TABS = [
   { id: 'imports', label: 'Import history', element: <ImportHistoryTab /> },
   { id: 'preferences', label: 'Preferences', element: <PreferencesTab /> },
   { id: 'data', label: 'Data', element: <DataTab /> },
+  { id: 'ai', label: 'AI', element: <AiTab /> },
 ] as const
 
 export function SettingsPage() {

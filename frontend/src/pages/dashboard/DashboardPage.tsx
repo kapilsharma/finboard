@@ -1,11 +1,12 @@
 import { Link } from 'react-router'
 import { errorMessage } from '../../api/client'
-import { useDashboard, useDashboardMonths } from '../../api/hooks'
+import { useAiStatus, useDashboard, useDashboardMonths } from '../../api/hooks'
 import { CashflowChart } from '../../charts/CashflowChart'
 import { Card, ErrorText } from '../../components/ui'
 import { useUrlState } from '../../lib/useUrlState'
 import { MonthSelect, ReviewBanner, Takeaway } from './DashboardHeader'
 import { HeadlineCards } from './HeadlineCards'
+import { AskPanel, PinnedWidgets } from './AskPanel'
 import { AccountTable, CategoryLimits, IncomeBySource } from './Sections'
 import { TransactionsPanel } from './TransactionsPanel'
 import styles from './dashboard.module.css'
@@ -19,6 +20,8 @@ export function DashboardPage() {
   const [state, update] = useUrlState()
   const dashboard = useDashboard(state.month)
   const months = useDashboardMonths()
+  const ai = useAiStatus()
+  const askEnabled = ai.data?.ask_enabled === true
   const data = dashboard.data
 
   if (dashboard.isPending) return <p className={styles.muted}>Loading…</p>
@@ -126,6 +129,10 @@ export function DashboardPage() {
           <TransactionsPanel month={state.month ?? data.month} state={state} update={update} />
         </Card>
       </section>
+
+      {/* Optional, off by default (M4a): below the approved mockup's sections. */}
+      {askEnabled && ai.data && <AskPanel status={ai.data} />}
+      {askEnabled && <PinnedWidgets />}
     </div>
   )
 }
