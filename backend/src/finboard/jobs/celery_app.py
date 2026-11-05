@@ -5,6 +5,7 @@ from celery import Celery
 from finboard.core.config import Settings, get_settings
 
 PARSE_QUEUE = "parse"
+AI_QUEUE = "ai"  # embeddings: one at a time keeps RAM low (ARCHITECTURE §18)
 DEFAULT_QUEUE = "default"
 
 
@@ -19,7 +20,7 @@ def create_celery(settings: Settings) -> Celery:
         task_reject_on_worker_lost=True,
         worker_prefetch_multiplier=1,
         task_default_queue=DEFAULT_QUEUE,
-        task_routes={"imports.*": {"queue": PARSE_QUEUE}},
+        task_routes={"imports.*": {"queue": PARSE_QUEUE}, "ai.*": {"queue": AI_QUEUE}},
         # Untrusted PDFs: recycle worker processes so a leak or a pathological file can't
         # accumulate (ARCHITECTURE §6). Memory is in KiB.
         worker_max_tasks_per_child=50,

@@ -88,20 +88,27 @@ flowchart LR
 | Rule packs leak no account ids and round-trip | `tests/integration/test_rule_packs.py`; tenancy: `tests/integration/tenancy/test_categorisation_isolation.py` |
 | 50k txns × 200 rules re-applied in < 10 s in a worker | `tests/integration/perf/test_reapply.py` (`perf`) |
 
-## M3a — AI category suggestions (local, after M3)
+## M3a — AI category suggestions (local, after M3) ✅ (2026-11-05)
 *AI is optional and off by default ([ADR-0030](adr/0030-assistive-ai-opt-in.md)). Can run in parallel with M4.*
+
+*Done with M4a: 569 backend tests + 99 frontend tests. Held-out top-1 accuracy: all-MiniLM-L6-v2 **0.948** vs the trigram baseline's 0.764 ([docs/ai-eval.md](ai-eval.md)); 5k transactions embedded in 6.5 s, 454 MB peak. Deviations ([ADR-0038](adr/0038-ai-suggestions-as-built.md)):*
+- *Only the merchant words of a description are embedded (narration boilerplate made unrelated merchants look alike); stored vectors carry a text version.*
+- *The evaluation adds never-categorised merchants and tunes the "too different to vote" cut-off with them; unit tests keep the served values equal to the evaluation's.*
+- *The baseline is pg_trgm trigram similarity (also the fallback for transactions not yet embedded), not TF-IDF / `rapidfuzz`.*
+- *Image `pgvector/pgvector:pg18-trixie`; the `vector` extension is created by the superuser (init script, `scripts/enable-pgvector.sh`), not the migration; our own `Vector` column type instead of the `pgvector` package.*
+- *Suggestions appear in the categorise dialog (opened from review groups and the transaction table), not inline in the groups. The AI tables aren't exported; delete-all removes them.*
 
 **Scope:** `ai` optional extra (`fastembed`, ONNX runtime, no PyTorch, so it stays light on a 16 GB laptop). DB image → `pgvector/pgvector:pg18` in `compose.dev.yaml` and the CI service. Migration: `vector` extension + `txn_embedding` with RLS ([ADR-0031](adr/0031-pgvector-embeddings.md)). `finboard ai fetch-model` (the only download; then offline). `ai.embed` (after each commit) and `ai.embed_all` (backfill, re-embed on model change) on a new `ai` queue, concurrency 1. Suggestion service: k-nearest neighbours (k = 10, cosine) over the user's rule/manual-categorised txns → weighted vote → top 3 with confidence and the nearest examples as the "why". `GET /transactions/{id}/suggestions`. CategoriseDialog and review groups show suggestions, with **Accept** (manual) and **Make a rule** (feeds the M3 rule suggester). Settings › AI per-user opt-in (the operator's `FINBOARD_AI_SUGGESTIONS` only makes it available). `finboard worker` consumes the `ai` queue when suggestions are available. Suggestion eval on generated description variants with a character n-gram / `rapidfuzz` baseline.
 
 | Acceptance criterion | Proven by |
 |---|---|
-| Without the `ai` extra, the app starts and every M1–M3 test passes | CI job without the extra |
+| Without the `ai` extra, the app starts and every M1–M3 test passes | CI `backend-portable` (core install); `tests/unit/test_ai_optional.py` |
 | A suggestion is never applied automatically. Accepting one sets `categorised_by=manual` | `tests/integration/test_ai_suggestions.py` |
-| On generated description variants (typos, UPI handles, truncation; exact repeats excluded), embeddings beat the n-gram / `rapidfuzz` baseline on top-1 accuracy. Both numbers recorded in the PR; if they don't, M3a ships the baseline instead | `tests/ai/test_suggest_eval.py` |
+| On generated description variants (typos, UPI handles, truncation; exact repeats excluded), embeddings beat the n-gram / `rapidfuzz` baseline on top-1 accuracy. Both numbers recorded in the PR; if they don't, M3a ships the baseline instead | `tests/unit/test_ai_suggestions.py::test_default_model_beats_trigram_offline`, [docs/ai-eval.md](ai-eval.md) (0.948 vs 0.764) |
 | Suggestions appear only for users who opted in, on a server where the feature is available | `tests/integration/test_ai_suggestions.py` |
 | User B never gets user A's neighbours (RLS on `txn_embedding`) | `tests/integration/tenancy/test_ai_isolation.py` |
-| After `fetch-model`, embedding runs with the network blocked | `pytest-socket` in `tests/ai/` |
-| Owner's laptop: 5k txns embedded in < 60 s, worker RSS < 600 MB | `perf` marker (manual run, results in PR) |
+| After `fetch-model`, embedding runs with the network blocked | `pytest-socket` in `tests/unit/` (the verdict test embeds offline) |
+| Owner's laptop: 5k txns embedded in < 60 s, worker RSS < 600 MB | `tests/integration/perf/test_embed_perf.py` (cloud sandbox: 6.5 s, 454 MB; owner's laptop run pending) |
 
 ## M4 — Dashboard + transactions ✅ (2026-11-04; owner visual sign-off pending)
 *Done: 412 backend tests (golden Sep 2026, metric edge cases, ETag/304, `/transactions` paging for every sort, tenancy, perf) + 85 frontend tests + 8 Playwright tests (dashboard interactions, axe in light and dark, 400 px, import). `/dashboard` p95 87 ms and a `/transactions` page 20 ms for a 50k-txn user in a 100-user DB. Locust, 200 users: p95 57 ms with 3 API processes (930 ms with one). Deviations ([ADR-0036](adr/0036-dashboard-as-built.md)):*
@@ -123,23 +130,28 @@ flowchart LR
 | `aria-sort`, text not colour-only, axe clean in light and dark, no horizontal scroll at 400 px | Playwright `dashboard.spec.ts`; Vitest `DeltaBadge.test.tsx` |
 | Owner signs off visual parity with `docs/handover/design/dashboard-mockup.png` | screenshot review (**pending**: light, dark and 400 px screenshots in the PR) |
 
-## M4a — Ask Finboard (after M4)
+## M4a — Ask Finboard (after M4) ✅ (2026-11-05; live eval pending)
+*Done: built with M3a (same test counts). Spec path, guarded SQL path in the SQLite sandbox, LangGraph with ≤ 2 locally hinted retries, pinned widgets, Ask panel and Settings › AI; 31 golden questions with an oracle-model test. Open: the live `finboard ai eval` run with the owner's Gemini key. Deviations ([ADR-0039](adr/0039-ask-finboard-as-built.md)):*
+- *Replies are JSON validated locally (Pydantic), not provider structured output.*
+- *The model names money output columns `*_paise`; they become `Decimal` rupees locally.*
+- *Spec SQL runs on its own READ ONLY connection (timeout → `query_timeout`).*
+- *`DELETE /ask/history` clears unpinned questions (no per-item delete).*
 *Natural-language questions → chart, with pinning to the dashboard ([ADR-0032](adr/0032-nl-analytics-langgraph.md)). Off by default. The LLM never sees transaction data ([ADR-0030](adr/0030-assistive-ai-opt-in.md)).*
 
 **Scope:** `ai_txn` / `ai_budget` views (ordinary views, RLS applies; migration). Per-request **SQLite sandbox** (`ai/sandbox.py`) for model-written SQL, loaded with the caller's rows only ([ADR-0032](adr/0032-nl-analytics-langgraph.md)). `finboard/ai/catalog.yaml` (versioned sandbox table and column descriptions for prompts). `QuerySpec` (Pydantic) + deterministic SQL builder on the §12 metric definitions. LangGraph graph: understand → build or generate SQL → guard (`sqlglot`, function allow-list, transpile to SQLite) → execute (spec: Postgres, read-only, RLS, 3 s; SQL: sandbox with authorizer, 3 s, 1,000 rows) → retry ≤ 2 with locally generated error text → choose chart → templated answer, or a clarifying question. `finboard.ai.llm` (the single outbound module): LangChain chat model, **Gemini Flash** by default (`langchain-google-genai`), Ollama optional, 429 handling, account aliases instead of names, tracing forced off, rows kept out of graph state (local result store). SQL path behind `FINBOARD_AI_ASK_SQL` (off until the sandbox tests pass). Endpoints: `POST /ask` · `GET /ask/history` · `DELETE /ask/history/{id}` · `POST /ask/{id}/pin` · `GET /dashboard/widgets` · `DELETE /dashboard/widgets/{id}`. UI: an Ask panel on the dashboard (question box with a note that the question is sent to <provider> and, on Gemini's free tier, may be used to improve Google's products, chart or table, "show query", Pin). Pinned widgets render below the mockup sections. Eval harness: `finboard ai eval` with ~30 golden questions → `docs/ai-eval.md`. README: demo GIF + eval table.
 
 | Acceptance criterion | Proven by |
 |---|---|
-| "Give a monthly breakdown of eating out and provisions in the last six months" → grouped bars, month × category, totals equal to the dashboard's | `tests/golden/test_ask_golden.py` (recorded LLM response) |
-| No LLM request contains any description, amount, balance or account number from the fixtures (canary values) | `tests/ai/test_privacy_boundary.py` |
-| Guard rejects DML/DDL, multiple statements, base tables (e.g. `txn`), deny-listed functions and comments hiding statements | `tests/unit/test_sql_guard.py` (+ Hypothesis) |
-| Even with the guard bypassed, model SQL in the sandbox sees only the caller's rows, and the authorizer blocks non-allow-listed functions, `ATTACH`, `PRAGMA` and writes | `tests/unit/test_sandbox.py`, `tests/integration/tenancy/test_ask_isolation.py` |
-| Retry messages contain no data values (canary in a failing cast); tracing stays off with LangSmith env vars set; no graph state snapshot contains result rows | `tests/ai/test_privacy_boundary.py` |
-| Pinned SQL is re-guarded on refresh; a catalog-version change shows "needs updating" instead of numbers | `test_ask.py::test_pinned_widget_catalog_change` |
-| A slow query is cut off at 3 s. Provider 429 or timeout → problem+json `ai_unavailable`, no 500 | `tests/integration/test_ask.py` (fake LLM) |
-| Refreshing a pinned widget makes no LLM call | `test_ask.py::test_pinned_widget_offline` |
-| `FINBOARD_AI_ASK=off`, or the user hasn't opted in → `/ask` returns 404 and the panel is hidden | `test_ask.py`, Vitest |
-| Live eval: spec-path execution accuracy ≥ 80 %, SQL path reported separately | `finboard ai eval` (manual; results committed to `docs/ai-eval.md`) |
+| "Give a monthly breakdown of eating out and provisions in the last six months" → grouped bars, month × category, totals equal to the dashboard's | `tests/integration/test_ask.py::test_golden_eating_out_and_provisions` (recorded reply) |
+| No LLM request contains any description, amount, balance or account number from the fixtures (canary values) | `test_ask.py::test_privacy_canaries_never_leave` (real LangChain client, fake provider, incl. retries) |
+| Guard rejects DML/DDL, multiple statements, base tables (e.g. `txn`), deny-listed functions and comments hiding statements | `tests/unit/test_ask_guard_sandbox.py` (attack corpus + Hypothesis; functions are allow-listed) |
+| Even with the guard bypassed, model SQL in the sandbox sees only the caller's rows, and the authorizer blocks non-allow-listed functions, `ATTACH`, `PRAGMA` and writes | `tests/unit/test_ask_guard_sandbox.py`, `tests/integration/tenancy/test_ask_isolation.py` |
+| Retry messages contain no data values (canary in a failing cast); tracing stays off with LangSmith env vars set; no graph state snapshot contains result rows | `test_ask_guard_sandbox.py::test_error_hints_never_quote_data`, `tests/unit/test_ai_suggestions.py::test_tracing_forced_off`, `tests/unit/test_ask_graph.py::test_no_state_ever_holds_rows` |
+| Pinned SQL is re-guarded on refresh; a catalog-version change shows "needs updating" instead of numbers | `test_ask.py::test_pinned_sql_needs_updating_after_catalog_change` |
+| A slow query is cut off at 3 s. Provider 429 or timeout → problem+json `ai_unavailable`, no 500 | `test_ask.py::test_spec_queries_are_read_only_and_cut_off`, `test_ask_guard_sandbox.py::test_timeout`, `test_ask.py::test_rate_limit_is_a_friendly_503` |
+| Refreshing a pinned widget makes no LLM call | `test_ask.py::test_pin_reruns_locally_and_history` |
+| `FINBOARD_AI_ASK=off`, or the user hasn't opted in → `/ask` returns 404 and the panel is hidden | `test_ask.py::test_off_by_default`, `::test_needs_opt_in`, Vitest `AskPanel.test.tsx` |
+| Live eval: spec-path execution accuracy ≥ 80 %, SQL path reported separately | `finboard ai eval` (manual; results committed to `docs/ai-eval.md`) — **pending: owner's run**; harness proven by `tests/integration/test_ask_eval.py` |
 
 ## M5 — Settings polish & data ✅ (2026-11-04)
 *Done: 442 backend tests + 92 frontend tests + 9 Playwright tests (incl. axe and 400 px on the new tabs); ruff, mypy strict, import-linter, oxlint, tsc clean. Deviations ([ADR-0037](adr/0037-data-and-housekeeping-as-built.md)):*

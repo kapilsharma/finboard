@@ -31,6 +31,9 @@
   --series-income: #2f6db5;
   --series-spending: #d0813a;
   --series-net: #3a9a5b;
+  --series-4: #8a5fb0;
+  --series-5: #c75b7a;
+  --series-6: #5f7f99;
 
   color-scheme: light;
 }
@@ -53,6 +56,9 @@
     --series-income: #6ea2e3;
     --series-spending: #e59a55;
     --series-net: #5fbf83;
+    --series-4: #b48ad8;
+    --series-5: #e58aa4;
+    --series-6: #8fb0c9;
     color-scheme: dark;
   }
 }
@@ -74,5 +80,8 @@
   --series-income: #6ea2e3;
   --series-spending: #e59a55;
   --series-net: #5fbf83;
+  --series-4: #b48ad8;
+  --series-5: #e58aa4;
+  --series-6: #8fb0c9;
   color-scheme: dark;
 }

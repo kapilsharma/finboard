@@ -28,6 +28,7 @@ from sqlalchemy.dialects.postgresql import CITEXT, JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from finboard.db.base import Base, Timestamps, UserOwned, UUIDPrimaryKey, str_enum
+from finboard.db.vector import Vector
 from finboard.domain.enums import (
     AccountType,
     CategorisedBy,
@@ -43,6 +44,7 @@ from finboard.domain.enums import (
 )
 
 Money = Numeric(14, 2, asdecimal=True)
+EMBEDDING_DIMENSIONS = 384  # all-MiniLM-L6-v2 (ADR-0031)
 
 
 class AppUser(UUIDPrimaryKey, Timestamps, Base):
@@ -437,6 +439,70 @@ class UserParserSetting(UserOwned, Timestamps, Base):
     __table_args__ = (PrimaryKeyConstraint("user_id", "parser_id"),)
 
 
+class TxnEmbedding(UserOwned, Base):
+    """The embedding of a transaction's normalised description (M3a, ADR-0031)."""
+
+    __tablename__ = "txn_embedding"
+
+    txn_id: Mapped[uuid.UUID]
+    model: Mapped[str] = mapped_column(String(120))
+    embedding: Mapped[list[float]] = mapped_column(Vector(EMBEDDING_DIMENSIONS))
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+
+    __table_args__ = (
+        PrimaryKeyConstraint("user_id", "txn_id"),
+        _user_fk("txn_id", "txn", ondelete="CASCADE"),
+    )
+
+
+class AskQuery(UUIDPrimaryKey, UserOwned, Base):
+    """One Ask Finboard question (M4a, ADR-0032): what was asked and how it was answered.
+    Results are never stored (OQ-35)."""
+
+    __tablename__ = "ask_query"
+
+    question: Mapped[str] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String(20))  # ok, clarify, failed
+    path: Mapped[str | None] = mapped_column(String(10))  # spec, sql
+    spec: Mapped[dict[str, Any] | None]
+    sql: Mapped[str | None] = mapped_column(Text)
+    chart: Mapped[dict[str, Any] | None]
+    clarification: Mapped[str | None] = mapped_column(Text)
+    error: Mapped[str | None] = mapped_column(Text)
+    catalog_version: Mapped[int] = mapped_column(SmallInteger)
+    retries: Mapped[int] = mapped_column(SmallInteger, server_default=text("0"))
+    latency_ms: Mapped[int] = mapped_column(Integer, server_default=text("0"))
+    model: Mapped[str | None] = mapped_column(String(120))
+    tokens_in: Mapped[int | None]
+    tokens_out: Mapped[int | None]
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+
+    __table_args__ = (
+        UniqueConstraint("user_id", "id"),
+        CheckConstraint("status IN ('ok', 'clarify', 'failed')", name="status_known"),
+        CheckConstraint("path IS NULL OR path IN ('spec', 'sql')", name="path_known"),
+    )
+
+
+Index("ix_ask_query_user_created", AskQuery.user_id, AskQuery.created_at.desc())
+
+
+class DashboardWidget(UUIDPrimaryKey, UserOwned, Timestamps, Base):
+    """A pinned Ask answer, re-run locally on every dashboard view (no LLM call)."""
+
+    __tablename__ = "dashboard_widget"
+
+    ask_query_id: Mapped[uuid.UUID]
+    title: Mapped[str] = mapped_column(String(200))
+    sort_order: Mapped[int] = mapped_column(server_default=text("0"))
+
+    __table_args__ = (
+        UniqueConstraint("user_id", "id"),
+        UniqueConstraint("user_id", "ask_query_id"),
+        _user_fk("ask_query_id", "ask_query", ondelete="CASCADE"),
+    )
+
+
 class UserSetting(Base):
     __tablename__ = "user_setting"
 
@@ -462,4 +528,7 @@ USER_OWNED_TABLES = (
     "transfer_pair",
     "budget",
     "user_parser_setting",
+    "txn_embedding",
+    "ask_query",
+    "dashboard_widget",
 )

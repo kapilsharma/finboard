@@ -1,4 +1,5 @@
 import asyncio
+import importlib.util
 import uuid
 from collections.abc import AsyncIterator, Mapping
 from pathlib import Path
@@ -22,6 +23,13 @@ from finboard.db.uow import unit_of_work
 from finboard.jobs import tasks
 from finboard.main import create_app
 from finboard.services.users import principal_for, provision_user
+
+# Ask Finboard's tests need the optional `ai` extra (LangGraph, sqlglot); skip them without it.
+collect_ignore_glob = (
+    []
+    if importlib.util.find_spec("langgraph") and importlib.util.find_spec("sqlglot")
+    else ["test_ask*.py", "tenancy/test_ask_*.py"]
+)
 
 
 def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
@@ -93,6 +101,8 @@ TASKS = {
     "data.export": tasks.export_data,
     "data.import": tasks.import_data,
     "data.delete_user_data": tasks.delete_user_data,
+    "ai.embed": tasks.embed,
+    "ai.embed_all": tasks.embed_all,
 }
 
 

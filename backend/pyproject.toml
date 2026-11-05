@@ -37,6 +37,11 @@ generic_table = "finboard.parsers.builtin.generic_table.fixtures:GenericTableFix
 [project.optional-dependencies]
 ai = [
     "fastembed>=0.7",
+    "langchain-core>=0.3",
+    "langchain-google-genai>=2.1",
+    "langchain-ollama>=0.3",
+    "langgraph>=0.4",
+    "sqlglot>=26",
 ]
 
 [dependency-groups]
@@ -138,6 +143,32 @@ forbidden_modules = [
     "fastapi", "starlette", "sqlalchemy", "celery", "redis", "finboard.core.config",
     "finboard.db", "finboard.services", "finboard.api", "finboard.jobs",
 ]
+
+[[tool.importlinter.contracts]]
+name = "AI package is pure apart from its models (ADR-0030)"
+type = "forbidden"
+source_modules = ["finboard.ai"]
+forbidden_modules = [
+    "fastapi", "starlette", "sqlalchemy", "celery", "redis",
+    "finboard.db", "finboard.services", "finboard.api", "finboard.jobs", "finboard.cli",
+]
+
+[[tool.importlinter.contracts]]
+name = "AI libraries stay inside finboard.ai; the API reaches AI only through services"
+type = "forbidden"
+source_modules = [
+    "finboard.api", "finboard.services", "finboard.jobs", "finboard.db", "finboard.domain",
+    "finboard.categorisation", "finboard.parsers",
+]
+forbidden_modules = ["fastembed", "langchain_core", "langgraph", "sqlglot"]
+allow_indirect_imports = true
+
+[[tool.importlinter.contracts]]
+name = "Routes never import the AI package"
+type = "forbidden"
+source_modules = ["finboard.api"]
+forbidden_modules = ["finboard.ai"]
+allow_indirect_imports = true
 
 [[tool.importlinter.contracts]]
 name = "Services know nothing about HTTP or Celery"

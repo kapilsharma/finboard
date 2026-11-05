@@ -205,3 +205,26 @@ def requeue_stale() -> int:
 @celery_app.task(name="maintenance.purge_jobs")  # type: ignore[untyped-decorator]
 def purge_jobs() -> int:
     return _maintenance("purge_jobs")
+
+
+# ---------------------------------------------------------------- AI (optional, ARCHITECTURE §18)
+
+
+async def _embed(uow: UnitOfWork, job: Job) -> dict[str, Any]:
+    from finboard.services.ai import AiConfig, EmbeddingService
+
+    return await EmbeddingService(uow, AiConfig.from_settings(get_settings())).run(job)
+
+
+@celery_app.task(name="ai.embed")  # type: ignore[untyped-decorator]
+def embed(job_id: str, user_id: str) -> None:
+    """Embed newly committed transactions (queued after a commit)."""
+    with contextlib.suppress(FinboardError):
+        _run(job_id, user_id, _embed)
+
+
+@celery_app.task(name="ai.embed_all")  # type: ignore[untyped-decorator]
+def embed_all(job_id: str, user_id: str) -> None:
+    """Backfill: embed everything without a current embedding (also after a model change)."""
+    with contextlib.suppress(FinboardError):
+        _run(job_id, user_id, _embed)

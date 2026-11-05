@@ -24,14 +24,17 @@ from sqlalchemy import (
     update,
 )
 from sqlalchemy.dialects.postgresql import insert
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.exc import DBAPIError
+from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 
 from finboard.db.base import Base
 from finboard.db.models import (
     Account,
     AppUser,
+    AskQuery,
     Budget,
     Category,
+    DashboardWidget,
     ImportBatch,
     ImportRow,
     Job,
@@ -52,6 +55,7 @@ from finboard.domain.enums import (
     JobStatus,
     TransferStatus,
 )
+from finboard.domain.errors import QueryTimeout
 
 
 class UserRepo:
@@ -1101,3 +1105,243 @@ class DataRepo(_UserScoped):
             if found:
                 return True
         return False
+
+
+# ---------------------------------------------------------------- AI embeddings (M3a)
+
+
+@dataclass(frozen=True, slots=True)
+class NeighbourRow:
+    txn_id: uuid.UUID
+    category_id: uuid.UUID
+    similarity: float
+    date: date
+    description: str
+    amount: Decimal
+    direction: Direction
+
+
+class EmbeddingRepo(_UserScoped):
+    async def to_embed(self, model: str, limit: int) -> list[tuple[uuid.UUID, str]]:
+        """Transactions with no embedding from `model` yet (missing, or from another model)."""
+        stmt = text(
+            """
+            SELECT t.id, t.description_norm FROM txn t
+            LEFT JOIN txn_embedding e ON e.user_id = t.user_id AND e.txn_id = t.id
+            WHERE t.user_id = :u AND (e.txn_id IS NULL OR e.model <> :m)
+            ORDER BY t.id LIMIT :limit
+            """
+        )
+        rows = await self.session.execute(stmt, {"u": self.user_id, "m": model, "limit": limit})
+        return [(r[0], r[1]) for r in rows]
+
+    async def upsert(self, model: str, rows: Sequence[tuple[uuid.UUID, list[float]]]) -> None:
+        if not rows:
+            return
+        stmt = text(
+            """
+            INSERT INTO txn_embedding (user_id, txn_id, model, embedding)
+            SELECT :u, x.txn_id, :m, CAST(x.vec AS vector)
+            FROM unnest(CAST(:ids AS uuid[]), CAST(:vecs AS text[])) AS x(txn_id, vec)
+            ON CONFLICT (user_id, txn_id)
+            DO UPDATE SET model = EXCLUDED.model, embedding = EXCLUDED.embedding,
+                          created_at = now()
+            """
+        )
+        await self.session.execute(
+            stmt,
+            {
+                "u": self.user_id,
+                "m": model,
+                "ids": [r[0] for r in rows],
+                "vecs": ["[" + ",".join(repr(float(v)) for v in r[1]) + "]" for r in rows],
+            },
+        )
+
+    async def counts(self, model: str) -> tuple[int, int]:
+        """(transactions embedded with `model`, all transactions)."""
+        stmt = text(
+            """
+            SELECT (SELECT count(*) FROM txn_embedding WHERE user_id = :u AND model = :m),
+                   (SELECT count(*) FROM txn WHERE user_id = :u)
+            """
+        )
+        done, total = (await self.session.execute(stmt, {"u": self.user_id, "m": model})).one()
+        return int(done), int(total)
+
+    async def has_embedding(self, txn_id: uuid.UUID, model: str) -> bool:
+        stmt = text(
+            "SELECT EXISTS (SELECT 1 FROM txn_embedding"
+            " WHERE user_id = :u AND txn_id = :t AND model = :m)"
+        )
+        params = {"u": self.user_id, "t": txn_id, "m": model}
+        return bool(await self.session.scalar(stmt, params))
+
+    async def neighbours_by_embedding(
+        self, txn_id: uuid.UUID, model: str, k: int
+    ) -> list[NeighbourRow]:
+        """The k nearest rule- or manually-categorised transactions in the same direction,
+        by cosine similarity (exact scan; ADR-0031: no ANN index until perf needs one)."""
+        stmt = text(
+            """
+            WITH q AS (
+              SELECT e.embedding, t.direction FROM txn_embedding e
+              JOIN txn t ON t.user_id = e.user_id AND t.id = e.txn_id
+              WHERE e.user_id = :u AND e.txn_id = :t AND e.model = :m
+            )
+            SELECT n.id, n.category_id, 1 - (ne.embedding <=> q.embedding) AS similarity,
+                   n.date, n.description_raw, n.amount, n.direction
+            FROM q
+            JOIN txn_embedding ne ON ne.user_id = :u AND ne.model = :m AND ne.txn_id <> :t
+            JOIN txn n ON n.user_id = ne.user_id AND n.id = ne.txn_id
+            WHERE n.categorised_by IN ('rule', 'manual') AND n.direction = q.direction
+            ORDER BY ne.embedding <=> q.embedding
+            LIMIT :k
+            """
+        )
+        rows = await self.session.execute(
+            stmt, {"u": self.user_id, "t": txn_id, "m": model, "k": k}
+        )
+        return [NeighbourRow(*r) for r in rows]
+
+    async def neighbours_by_trigram(self, txn_id: uuid.UUID, k: int) -> list[NeighbourRow]:
+        """The same, by pg_trgm similarity of normalised descriptions (the baseline)."""
+        stmt = text(
+            """
+            WITH q AS (SELECT description_norm, direction FROM txn WHERE user_id = :u AND id = :t)
+            SELECT n.id, n.category_id, similarity(n.description_norm, q.description_norm) AS s,
+                   n.date, n.description_raw, n.amount, n.direction
+            FROM q JOIN txn n ON n.user_id = :u AND n.id <> :t
+            WHERE n.categorised_by IN ('rule', 'manual') AND n.direction = q.direction
+            ORDER BY s DESC, n.id
+            LIMIT :k
+            """
+        )
+        rows = await self.session.execute(stmt, {"u": self.user_id, "t": txn_id, "k": k})
+        return [NeighbourRow(r[0], r[1], float(r[2]), r[3], r[4], r[5], r[6]) for r in rows]
+
+
+# ---------------------------------------------------------------- Ask Finboard (M4a, ADR-0032)
+
+
+@dataclass(frozen=True, slots=True)
+class AccountAliasRow:
+    alias: str
+    type: str
+    institution: str | None
+
+
+class AskRepo(_UserScoped):
+    async def add(self, query: AskQuery) -> AskQuery:
+        query.user_id = self.user_id
+        self.session.add(query)
+        await self.session.flush()
+        return query
+
+    async def get(self, query_id: uuid.UUID) -> AskQuery | None:
+        stmt = select(AskQuery).where(AskQuery.user_id == self.user_id, AskQuery.id == query_id)
+        return (await self.session.execute(stmt)).scalar_one_or_none()
+
+    async def history(self, limit: int = 50) -> Sequence[AskQuery]:
+        stmt = (
+            select(AskQuery)
+            .where(AskQuery.user_id == self.user_id)
+            .order_by(AskQuery.created_at.desc(), AskQuery.id.desc())
+            .limit(limit)
+        )
+        return (await self.session.scalars(stmt)).all()
+
+    async def delete_history(self) -> int:
+        """Every question that isn't pinned to the dashboard."""
+        pinned = select(DashboardWidget.ask_query_id).where(DashboardWidget.user_id == self.user_id)
+        stmt = delete(AskQuery).where(AskQuery.user_id == self.user_id, AskQuery.id.not_in(pinned))
+        result = await self.session.execute(stmt)
+        return int(result.rowcount or 0)  # type: ignore[attr-defined]
+
+    async def aliases(self) -> list[AccountAliasRow]:
+        """Account aliases in the same order as the `ai_txn` view (created_at, id)."""
+        stmt = (
+            select(Account.type, Account.institution)
+            .where(Account.user_id == self.user_id)
+            .order_by(Account.created_at, Account.id)
+        )
+        rows = (await self.session.execute(stmt)).all()
+        return [
+            AccountAliasRow(
+                f"Account {chr(65 + i)}" if i < 26 else f"Account {i + 1}",
+                str(getattr(t, "value", t)),
+                inst,
+            )
+            for i, (t, inst) in enumerate(rows)
+        ]
+
+    async def sandbox_rows(self) -> tuple[list[tuple[Any, ...]], list[tuple[Any, ...]]]:
+        """The caller's rows from the views, for the SQLite sandbox (RLS applies)."""
+        txns = await self.session.execute(
+            text(
+                "SELECT date, month, account, account_type, category, parent_category, type,"
+                " direction, signed_amount, merchant FROM ai_txn ORDER BY date"
+            )
+        )
+        budgets = await self.session.execute(
+            text("SELECT month, category, monthly_limit FROM ai_budget ORDER BY month")
+        )
+        return [tuple(r) for r in txns], [tuple(r) for r in budgets]
+
+    async def run_read_only(
+        self, sql: str, params: Mapping[str, Any], *, timeout_ms: int
+    ) -> list[tuple[Any, ...]]:
+        """Builder SQL (never model SQL) on its own connection: a READ ONLY transaction, bound
+        to this user for RLS, with a statement timeout."""
+        engine = self.session.bind
+        assert isinstance(engine, AsyncEngine)  # sessions are bound to the app engine
+        async with engine.connect() as conn:
+            await conn.execute(text("SET TRANSACTION READ ONLY"))
+            await conn.execute(
+                text("SELECT set_config('app.user_id', :u, true)"), {"u": str(self.user_id)}
+            )
+            await conn.execute(text(f"SET LOCAL statement_timeout = {int(timeout_ms)}"))
+            try:
+                rows = await conn.execute(text(sql), dict(params))
+            except DBAPIError as exc:
+                if getattr(exc.orig, "sqlstate", None) == "57014":  # query_canceled
+                    raise QueryTimeout() from None
+                raise
+            result = [tuple(r) for r in rows]
+            await conn.rollback()
+        return result
+
+    async def add_widget(self, widget: DashboardWidget) -> DashboardWidget:
+        widget.user_id = self.user_id
+        stmt = select(func.coalesce(func.max(DashboardWidget.sort_order), -1)).where(
+            DashboardWidget.user_id == self.user_id
+        )
+        widget.sort_order = int((await self.session.execute(stmt)).scalar_one()) + 1
+        self.session.add(widget)
+        await self.session.flush()
+        return widget
+
+    async def widget_for(self, query_id: uuid.UUID) -> DashboardWidget | None:
+        stmt = select(DashboardWidget).where(
+            DashboardWidget.user_id == self.user_id, DashboardWidget.ask_query_id == query_id
+        )
+        return (await self.session.execute(stmt)).scalar_one_or_none()
+
+    async def widgets(self) -> list[tuple[DashboardWidget, AskQuery]]:
+        stmt = (
+            select(DashboardWidget, AskQuery)
+            .join(
+                AskQuery,
+                (AskQuery.user_id == DashboardWidget.user_id)
+                & (AskQuery.id == DashboardWidget.ask_query_id),
+            )
+            .where(DashboardWidget.user_id == self.user_id)
+            .order_by(DashboardWidget.sort_order, DashboardWidget.created_at)
+        )
+        return [(w, q) for w, q in (await self.session.execute(stmt)).all()]
+
+    async def delete_widget(self, widget_id: uuid.UUID) -> bool:
+        stmt = delete(DashboardWidget).where(
+            DashboardWidget.user_id == self.user_id, DashboardWidget.id == widget_id
+        )
+        return bool((await self.session.execute(stmt)).rowcount)  # type: ignore[attr-defined]

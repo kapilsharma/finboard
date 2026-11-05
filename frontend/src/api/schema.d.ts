@@ -797,6 +797,108 @@ export interface paths {
     patch: operations['update_rule_api_v1_rules__rule_id__patch']
     trace?: never
   }
+  '/api/v1/ask': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    put?: never
+    /**
+     * Ask
+     * @description Answer a question as a chart or table. Only the question, the catalog, your category
+     *     paths and account aliases go to the provider; never rows, amounts or descriptions.
+     */
+    post: operations['ask_api_v1_ask_post']
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/api/v1/ask/history': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /**
+     * Ask History
+     * @description Your last 50 questions (results are never stored).
+     */
+    get: operations['ask_history_api_v1_ask_history_get']
+    put?: never
+    post?: never
+    /**
+     * Delete Ask History
+     * @description Forget every question that isn't pinned to the dashboard.
+     */
+    delete: operations['delete_ask_history_api_v1_ask_history_delete']
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/api/v1/ask/{query_id}/pin': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    put?: never
+    /**
+     * Pin Question
+     * @description Pin an answered question to the dashboard. It re-runs locally, with no AI call.
+     */
+    post: operations['pin_question_api_v1_ask__query_id__pin_post']
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/api/v1/dashboard/widgets': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /**
+     * Dashboard Widgets
+     * @description Pinned questions, re-run now on your own data.
+     */
+    get: operations['dashboard_widgets_api_v1_dashboard_widgets_get']
+    put?: never
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/api/v1/dashboard/widgets/{widget_id}': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    put?: never
+    post?: never
+    /** Delete Dashboard Widget */
+    delete: operations['delete_dashboard_widget_api_v1_dashboard_widgets__widget_id__delete']
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
   '/api/v1/dashboard/months': {
     parameters: {
       query?: never
@@ -1013,6 +1115,68 @@ export interface paths {
     patch?: never
     trace?: never
   }
+  '/api/v1/ai/status': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /**
+     * Ai Status
+     * @description Which AI features this server offers, and which you turned on (both off by default).
+     */
+    get: operations['ai_status_api_v1_ai_status_get']
+    put?: never
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/api/v1/ai/settings': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    put?: never
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    /**
+     * Update Ai Settings
+     * @description Turn suggestions or Ask Finboard on or off for yourself.
+     */
+    patch: operations['update_ai_settings_api_v1_ai_settings_patch']
+    trace?: never
+  }
+  '/api/v1/transactions/{txn_id}/suggestions': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /**
+     * Transaction Suggestions
+     * @description Up to 3 likely categories, from your own categorised transactions that look alike, each
+     *     with its closest examples. Nothing is applied: accepting one is a manual categorisation.
+     *     404 (`ai_off`) unless the server offers suggestions and you turned them on.
+     */
+    get: operations['transaction_suggestions_api_v1_transactions__txn_id__suggestions_get']
+    put?: never
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
 }
 export type webhooks = Record<string, never>
 export interface components {
@@ -1154,6 +1318,42 @@ export interface components {
       /** Colour */
       colour?: string | null
     }
+    /** AiSettingsIn */
+    AiSettingsIn: {
+      /** Suggestions */
+      suggestions?: boolean | null
+      /** Ask */
+      ask?: boolean | null
+    }
+    /** AiStatusOut */
+    AiStatusOut: {
+      /**
+       * Suggestions Available
+       * @description The operator made suggestions available
+       */
+      suggestions_available: boolean
+      /**
+       * Suggestions Enabled
+       * @description You turned them on
+       */
+      suggestions_enabled: boolean
+      /** Suggest Method */
+      suggest_method: string
+      /** Embed Model */
+      embed_model: string
+      /** Embedded */
+      embedded: number
+      /** Transactions */
+      transactions: number
+      /** Ask Available */
+      ask_available: boolean
+      /** Ask Enabled */
+      ask_enabled: boolean
+      /** Ask Provider */
+      ask_provider: string
+      /** Ask Sql */
+      ask_sql: boolean
+    }
     /** AlreadyImported */
     AlreadyImported: {
       /**
@@ -1169,6 +1369,83 @@ export interface components {
      * @enum {string}
      */
     ApplyScopeName: 'uncategorised' | 'all'
+    /** AskHistoryOut */
+    AskHistoryOut: {
+      /** Items */
+      items: components['schemas']['AskQueryOut'][]
+    }
+    /** AskIn */
+    AskIn: {
+      /** Question */
+      question: string
+    }
+    /** AskOut */
+    AskOut: {
+      query: components['schemas']['AskQueryOut']
+      /** Answer */
+      answer: string | null
+      result: components['schemas']['AskResultOut'] | null
+    }
+    /** AskQueryOut */
+    AskQueryOut: {
+      /**
+       * Id
+       * Format: uuid
+       */
+      id: string
+      /** Question */
+      question: string
+      /**
+       * Status
+       * @enum {string}
+       */
+      status: 'ok' | 'clarify' | 'failed'
+      /** Path */
+      path: ('spec' | 'sql') | null
+      /** Spec */
+      spec: {
+        [key: string]: unknown
+      } | null
+      /** Sql */
+      sql: string | null
+      chart: components['schemas']['ChartOut'] | null
+      /** Clarification */
+      clarification: string | null
+      /** Error */
+      error: string | null
+      /** Retries */
+      retries: number
+      /** Latency Ms */
+      latency_ms: number
+      /** Model */
+      model: string | null
+      /** Tokens In */
+      tokens_in: number | null
+      /** Tokens Out */
+      tokens_out: number | null
+      /**
+       * Created At
+       * Format: date-time
+       */
+      created_at: string
+      /**
+       * Pinned
+       * @default false
+       */
+      pinned: boolean
+    }
+    /** AskResultOut */
+    AskResultOut: {
+      /** Columns */
+      columns: components['schemas']['ResultColumnOut'][]
+      /**
+       * Rows
+       * @description Money as decimal strings, dates as ISO text
+       */
+      rows: (string | number | null)[][]
+      /** Truncated */
+      truncated: boolean
+    }
     /** BiggestSpend */
     BiggestSpend: {
       category: components['schemas']['CategoryRef']
@@ -1350,6 +1627,17 @@ export interface components {
       /** Colour */
       colour: string | null
     }
+    /** CategorySuggestionOut */
+    CategorySuggestionOut: {
+      category: components['schemas']['CategoryRef']
+      /**
+       * Confidence
+       * @description Share of the neighbours' vote, 0-1
+       */
+      confidence: number
+      /** Examples */
+      examples: components['schemas']['SuggestionExample'][]
+    }
     /**
      * CategoryType
      * @enum {string}
@@ -1368,6 +1656,20 @@ export interface components {
       sort_order?: number | null
       /** Archived */
       archived?: boolean | null
+    }
+    /** ChartOut */
+    ChartOut: {
+      /**
+       * Kind
+       * @enum {string}
+       */
+      kind: 'bar' | 'grouped_bar' | 'line' | 'table'
+      /** X */
+      x?: string | null
+      /** Series */
+      series?: string | null
+      /** Y */
+      y?: string | null
     }
     /** CommitIn */
     CommitIn: {
@@ -1781,6 +2083,11 @@ export interface components {
       /** End */
       end: string | null
     }
+    /** PinIn */
+    PinIn: {
+      /** Title */
+      title?: string | null
+    }
     /** Preferences */
     Preferences: {
       theme: components['schemas']['Theme']
@@ -1827,6 +2134,16 @@ export interface components {
       parser_id?: string | null
       /** Account Id */
       account_id?: string | null
+    }
+    /** ResultColumnOut */
+    ResultColumnOut: {
+      /** Name */
+      name: string
+      /**
+       * Kind
+       * @enum {string}
+       */
+      kind: 'text' | 'month' | 'date' | 'money' | 'count' | 'number'
     }
     /** ReviewGroupOut */
     ReviewGroupOut: {
@@ -2112,6 +2429,39 @@ export interface components {
       suggestion: components['schemas']['RuleSuggestionOut'] | null
       test: components['schemas']['RuleTestOut'] | null
     }
+    /** SuggestionExample */
+    SuggestionExample: {
+      /**
+       * Id
+       * Format: uuid
+       */
+      id: string
+      /**
+       * Date
+       * Format: date
+       */
+      date: string
+      /** Description */
+      description: string
+      /**
+       * Amount
+       * @example 2350.00
+       */
+      amount: string
+      direction: components['schemas']['Direction']
+      /** Similarity */
+      similarity: number
+    }
+    /** SuggestionsOut */
+    SuggestionsOut: {
+      /**
+       * Method
+       * @enum {string}
+       */
+      method: 'embedding' | 'trigram'
+      /** Items */
+      items: components['schemas']['CategorySuggestionOut'][]
+    }
     /**
      * Theme
      * @enum {string}
@@ -2360,6 +2710,33 @@ export interface components {
       input?: unknown
       /** Context */
       ctx?: Record<string, never>
+    }
+    /** WidgetListOut */
+    WidgetListOut: {
+      /** Items */
+      items: components['schemas']['WidgetOut'][]
+    }
+    /** WidgetOut */
+    WidgetOut: {
+      /**
+       * Id
+       * Format: uuid
+       */
+      id: string
+      /** Title */
+      title: string
+      /** Sort Order */
+      sort_order: number
+      /**
+       * Status
+       * @enum {string}
+       */
+      status: 'ok' | 'needs_update' | 'failed'
+      /** Message */
+      message: string | null
+      query: components['schemas']['AskQueryOut']
+      chart: components['schemas']['ChartOut'] | null
+      result: components['schemas']['AskResultOut'] | null
     }
   }
   responses: never
@@ -3929,6 +4306,161 @@ export interface operations {
       }
     }
   }
+  ask_api_v1_ask_post: {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['AskIn']
+      }
+    }
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['AskOut']
+        }
+      }
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['HTTPValidationError']
+        }
+      }
+    }
+  }
+  ask_history_api_v1_ask_history_get: {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['AskHistoryOut']
+        }
+      }
+    }
+  }
+  delete_ask_history_api_v1_ask_history_delete: {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      /** @description Successful Response */
+      204: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+    }
+  }
+  pin_question_api_v1_ask__query_id__pin_post: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        query_id: string
+      }
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['PinIn']
+      }
+    }
+    responses: {
+      /** @description Successful Response */
+      201: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['WidgetOut']
+        }
+      }
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['HTTPValidationError']
+        }
+      }
+    }
+  }
+  dashboard_widgets_api_v1_dashboard_widgets_get: {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['WidgetListOut']
+        }
+      }
+    }
+  }
+  delete_dashboard_widget_api_v1_dashboard_widgets__widget_id__delete: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        widget_id: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      /** @description Successful Response */
+      204: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['HTTPValidationError']
+        }
+      }
+    }
+  }
   dashboard_months_api_v1_dashboard_months_get: {
     parameters: {
       query?: never
@@ -4233,6 +4765,90 @@ export interface operations {
         }
         content: {
           'application/json': components['schemas']['JobAccepted']
+        }
+      }
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['HTTPValidationError']
+        }
+      }
+    }
+  }
+  ai_status_api_v1_ai_status_get: {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['AiStatusOut']
+        }
+      }
+    }
+  }
+  update_ai_settings_api_v1_ai_settings_patch: {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['AiSettingsIn']
+      }
+    }
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['AiStatusOut']
+        }
+      }
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['HTTPValidationError']
+        }
+      }
+    }
+  }
+  transaction_suggestions_api_v1_transactions__txn_id__suggestions_get: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        txn_id: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['SuggestionsOut']
         }
       }
       /** @description Validation Error */

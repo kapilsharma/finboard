@@ -99,7 +99,9 @@ step "No private data in the repo" in_backend uv run --no-project python ../scri
 
 # --- backend (jobs: lint [backend part], backend-integration)
 if [ "$BACKEND" = 1 ]; then
-  [ "$FAST" = 1 ] || step "Backend: install (uv sync --locked)" in_backend uv sync --locked
+  # With the optional ai extra, as the lint and backend-integration jobs. The backend-portable
+  # job also runs the unit tests without it; those tests skip what needs the extra.
+  [ "$FAST" = 1 ] || step "Backend: install (uv sync --locked --extra ai)" in_backend uv sync --locked --extra ai
   step "Backend: ruff check" in_backend uv run --frozen ruff check src tests
   step "Backend: ruff format --check" in_backend uv run --frozen ruff format --check src tests
   step "Backend: mypy (strict)" in_backend uv run --frozen mypy

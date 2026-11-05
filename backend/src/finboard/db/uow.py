@@ -14,10 +14,12 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from finboard.db.engine import RLS_USER_KEY
 from finboard.db.repos import (
     AccountRepo,
+    AskRepo,
     BudgetRepo,
     CategoryRepo,
     DashboardRepo,
     DataRepo,
+    EmbeddingRepo,
     ImportRepo,
     ImportRowRepo,
     JobRepo,
@@ -90,6 +92,14 @@ class UnitOfWork:
     @property
     def dashboard(self) -> DashboardRepo:
         return DashboardRepo(self.session, self.user_id)
+
+    @property
+    def embeddings(self) -> EmbeddingRepo:
+        return EmbeddingRepo(self.session, self.user_id)
+
+    @property
+    def ask(self) -> AskRepo:
+        return AskRepo(self.session, self.user_id)
 
     @property
     def data(self) -> DataRepo:

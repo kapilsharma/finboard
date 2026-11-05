@@ -1,6 +1,6 @@
 # ADR-0031: pgvector for embeddings, inside the existing Postgres
 
-**Status:** Accepted (owner decision 2026-11-04). Amends [ADR-0022](0022-postgresql.md) (image and extension list).
+**Status:** Accepted (owner decision 2026-11-04). Amends [ADR-0022](0022-postgresql.md) (image and extension list). Amended 2026-11-05 by [ADR-0038](0038-ai-suggestions-as-built.md): image `pg18-trixie`, extension created by the superuser, our own column type instead of the `pgvector` package, AI tables not in the export.
 
 **Context.** Category suggestions ([ADR-0030](0030-assistive-ai-opt-in.md)) need nearest-neighbour search over embeddings of transaction descriptions. The options were ChromaDB, FAISS, Qdrant (another container) and pgvector.
 

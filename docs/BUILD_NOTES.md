@@ -11,6 +11,8 @@ definition of done.
 | [M3 Categorisation](#m3-categorisation) | #3 | [0035](adr/0035-categorisation-as-built.md) |
 | [M4 Dashboard and transactions](#m4-dashboard-and-transactions) | #4 | [0036](adr/0036-dashboard-as-built.md) |
 | [M5 Settings and your data](#m5-settings-and-your-data) | #5 | [0037](adr/0037-data-and-housekeeping-as-built.md) |
+| [M3a Category suggestions](#m3a-category-suggestions) | #6 | [0038](adr/0038-ai-suggestions-as-built.md) |
+| [M4a Ask Finboard](#m4a-ask-finboard) | #7 | [0039](adr/0039-ask-finboard-as-built.md) |
 
 ---
 
@@ -117,3 +119,87 @@ definition of done.
 - **Imports keep their original ids,** so a restored Finboard still recognises statements it has seen. Restoring an export into a second user of the same database, while the first still has the data, isn't supported and is refused clearly.
 - **The backup is skipped if `pg_dump` isn't installed,** with a warning. A `pg_dump` that is installed but fails stops the migration; `FINBOARD_BACKUP_BEFORE_MIGRATE=false` overrides that. The M7 image needs a `pg_dump` that matches Postgres 18.
 - **Settings › System** became part of Settings › Data; old links still work.
+
+---
+
+## M3a Category suggestions
+
+Optional and off by default: the operator makes it available (`FINBOARD_AI_SUGGESTIONS=on`, the `ai` extra, `finboard ai fetch-model`), and each user turns it on in Settings › AI.
+
+### What's built
+- **Embeddings, all local:**
+  - all-MiniLM-L6-v2 through fastembed (ONNX, no PyTorch). It is downloaded once by `finboard ai fetch-model` and then runs offline.
+  - Vectors are stored in `txn_embedding` (pgvector, RLS).
+  - `ai.embed` runs after each import commit and `ai.embed_all` when the feature is turned on, on their own `ai` queue.
+- **Suggestions:**
+  - the 10 nearest categorised transactions (by rule or by hand, same direction) vote, weighted by similarity;
+  - up to 3 categories, each with its closest examples as the "why";
+  - transactions not yet embedded fall back to trigram similarity.
+- **UI:**
+  - Settings › AI: both switches, a plain statement of what leaves the machine, embedding progress, and clearing question history.
+  - The categorise dialog shows suggestions with **Accept** (a manual categorisation) and **Make a rule**.
+- **Evaluation** (`finboard ai eval-suggestions` → [ai-eval.md](ai-eval.md)):
+  - generated variants a rule would miss, plus never-categorised merchants;
+  - parameters tuned on one seed, scored on four others.
+  - Held-out top-1: **0.948** for MiniLM, 0.953 for bge-small (within noise), 0.764 for the trigram baseline.
+- **Speed:** 5,000 transactions embedded in 6.5 s, 454 MB peak (budget 60 s, 600 MB).
+- **Bugs found and fixed along the way:**
+  - The "too different to vote" cut-off was an untested guess, and it hid an obvious match in the demo data. Narration boilerplate made unrelated merchants look alike, so now only merchant words are embedded, and the cut-off is calibrated with merchants the user never categorised.
+  - Delete-all didn't remove the new AI tables.
+  - The API didn't start without the `ai` extra.
+
+### Deviations
+- **Embedded text** is the merchant words, not the whole normalised description. Vectors carry a text version, so they're rebuilt when the rules change.
+- **Baseline:** pg_trgm trigram similarity, which is also the production fallback, instead of TF-IDF or `rapidfuzz`.
+- **pgvector:**
+  - image `pg18-trixie` (the bookworm `pg18` tag breaks the collation on existing volumes);
+  - the superuser creates the extension (`scripts/enable-pgvector.sh` for existing databases);
+  - our own `Vector` column type.
+- **Suggestions** appear in the categorise dialog, not inline in the review groups.
+- **Export** leaves out the AI tables (derived data and a question log). Delete-all removes them.
+- **Unit tests** may open Unix sockets (asyncio needs them). Network sockets stay blocked.
+
+---
+
+## M4a Ask Finboard
+
+Optional and off by default: the operator sets `FINBOARD_AI_ASK=gemini|ollama` (and `FINBOARD_AI_ASK_SQL` for the SQL path), and each user opts in.
+
+### What's built
+- **Spec path:**
+  - the model fills a `QuerySpec` (metric, categories, accounts, merchant, dates, grouping, chart hint);
+  - a deterministic builder turns it into SQL on the dashboard's metric definitions;
+  - the SQL runs in Postgres on a READ ONLY connection, under RLS, with a 3 s timeout.
+  - The golden question matches the dashboard to the paisa.
+- **SQL path** (off by default):
+  - one guarded SELECT (sqlglot allow-lists, then transpiled to SQLite);
+  - it runs in a fresh in-memory SQLite database holding only the caller's rows, with an authorizer, `query_only`, a 3 s cut-off and a 1,000-row cap.
+- **LangGraph graph:** understand → spec or generate → guard → execute → chart → answer, or a clarifying question, with at most 2 retries carrying locally written hints. Rows stay in a per-request store, never in the graph state.
+- **One outbound module** (`ai/llm.py`):
+  - a typed, allow-listed request carrying the question, catalog, category paths, account aliases and today's date;
+  - Gemini Flash by default, Ollama as the local option;
+  - 429s and timeouts become `ai_unavailable`.
+- **API:** `POST /ask`, `GET`/`DELETE /ask/history`, `POST /ask/{id}/pin`, `GET /dashboard/widgets`, `DELETE /dashboard/widgets/{id}`. Every route is a 404 (`ai_off`) unless the feature is available and the user opted in.
+- **UI:**
+  - The Ask panel sits below the mockup's sections, with the provider disclosure, a chart or table, "show query" and Pin.
+  - Pinned widgets re-run locally with no model call. A stale catalog shows "needs updating".
+  - Checked in light, dark and at 400 px: screenshots `docs/screenshots/ai-*.png`.
+- **Evaluation:** `finboard ai eval` runs 31 golden questions over the demo data and writes to `docs/ai-eval.md`. An oracle-model test proves every reference answer runs.
+- **Tests:**
+  - privacy canaries (descriptions, amounts, account names) through the real LangChain client, including retries;
+  - the guard attack corpus plus Hypothesis;
+  - sandbox escapes (ATTACH, PRAGMA, writes, extensions, recursion, timeout, row cap);
+  - no rows in any graph state;
+  - tracing forced off;
+  - tenancy.
+- **Bugs found and fixed along the way:** the guard rejected every query containing `AND`, because sqlglot models operators as functions. The oracle test caught it.
+
+### Deviations
+- **Model replies** are JSON validated locally, not provider structured output. The same code serves Gemini, Ollama and recorded replies.
+- **Money:** the model names money output columns `*_paise`, and the app converts them to rupees.
+- **History:** `DELETE /ask/history` clears unpinned questions; there's no per-item delete.
+- **CI:** the lint and integration jobs install the `ai` extra. The cross-OS unit job checks the app without it.
+- **Pending:**
+  - the live `finboard ai eval` run (needs the owner's `FINBOARD_GEMINI_API_KEY`), which decides the "≥ 80 % spec-path accuracy" row;
+  - the owner's laptop perf run for M3a;
+  - the README demo GIF.

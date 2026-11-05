@@ -43,8 +43,10 @@ from finboard import __version__
 from finboard.db.base import Base
 from finboard.db.models import (
     Account,
+    AskQuery,
     Budget,
     Category,
+    DashboardWidget,
     ImportBatch,
     ImportRow,
     Job,
@@ -52,6 +54,7 @@ from finboard.db.models import (
     StagedRow,
     TransferPair,
     Txn,
+    TxnEmbedding,
     UserParserSetting,
     UserSetting,
 )
@@ -89,6 +92,8 @@ _PDF_MEMBER = re.compile(
 )
 
 # Tables in insert order (parents first). Jobs and staged rows are transient: not exported.
+# Neither are the AI tables (ADR-0038): embeddings are derived and rebuilt by `ai.embed_all`,
+# and Ask history is a log of questions, not financial data. Delete-all removes them all.
 TABLES: tuple[tuple[str, type[Base]], ...] = (
     ("categories", Category),
     ("accounts", Account),
@@ -489,6 +494,7 @@ class DataService:
         this job's own row, then give them the defaults again."""
         deleted = 0
         order: tuple[type[Base], ...] = (
+            DashboardWidget, AskQuery, TxnEmbedding,
             TransferPair, ImportRow, StagedRow, Txn, Rule, Budget, ImportBatch, Account,
             Category, UserSetting, UserParserSetting,
         )  # fmt: skip
