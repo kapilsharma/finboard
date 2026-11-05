@@ -1,0 +1,37 @@
+# What Ask Finboard's model may know about the data (ARCHITECTURE §18, ADR-0032).
+# Names and descriptions only: no values. Sent in prompts; describes the SQLite sandbox
+# tables that model-written SQL runs against. Bump `version` on any change: pinned SQL
+# widgets written against an older version show "needs updating". Changes need an eval run.
+version: 1
+tables:
+  ai_txn:
+    description: >-
+      One row per transaction of the user. Money is integer paise (1 rupee = 100 paise),
+      signed per metric: positive adds to its type's total (income received, money spent,
+      money invested); refunds are negative; transfers between own accounts are 0.
+    columns:
+      date: {type: text, description: "Transaction date, YYYY-MM-DD"}
+      month: {type: text, description: "Calendar month, YYYY-MM"}
+      account: {type: text, description: "Account alias, e.g. 'Account A' (see the account list)"}
+      account_type: {type: text, description: "savings, current, credit_card, loan, insurance, mutual_fund, other"}
+      category: {type: text, description: "Category name (see the category list)"}
+      parent_category: {type: text, description: "Parent category name, NULL for top-level categories"}
+      type: {type: text, description: "income, expense, investment or transfer"}
+      direction: {type: text, description: "debit (money out) or credit (money in)"}
+      signed_paise: {type: integer, description: "Amount in paise, signed per metric as above"}
+      merchant: {type: text, description: "Payee label or cleaned description, upper case"}
+  ai_budget:
+    description: The monthly spending limit in force for a category in a month.
+    columns:
+      month: {type: text, description: "Calendar month, YYYY-MM"}
+      category: {type: text, description: "Category name"}
+      limit_paise: {type: integer, description: "Monthly limit in paise"}
+metrics:
+  spending: "SUM(signed_paise) over type = 'expense'"
+  income: "SUM(signed_paise) over type = 'income'"
+  invested: "SUM(signed_paise) over type = 'investment'"
+  net: "income minus spending"
+rules:
+  - Write one SELECT in PostgreSQL syntax against ai_txn and ai_budget only.
+  - Name every money output column with the suffix _paise (e.g. spending_paise).
+  - Never count transfers as spending or income.
