@@ -2,6 +2,7 @@ from fastapi import APIRouter
 
 from finboard.api.routers import (
     accounts,
+    ai,
     budgets,
     categories,
     dashboard,
@@ -35,5 +36,6 @@ for module in (
     dashboard,
     budgets,
     data,
+    ai,
 ):
     api_router.include_router(module.router)

@@ -9,6 +9,8 @@ finboard openapi   print the OpenAPI schema (used to generate frontend types)
 finboard init      write a secret key (FINBOARD_SECRET_KEY) to .env if there isn't one
 finboard parsers   list installed statement parsers (and any that failed to load)
 finboard inspect-layout <pdf>   print a statement's structure with contents masked
+finboard ai fetch-model  download the embedding model once (optional AI, ARCHITECTURE §18)
+finboard ai eval-suggestions  compare embeddings with the trigram baseline -> docs/ai-eval.md
 finboard demo-data synthetic sample transactions and limits for the local user (empty DB only)
 """
 
@@ -72,7 +74,8 @@ def cmd_worker(args: argparse.Namespace) -> None:
 
     settings = get_settings()
     configure_logging(settings.log_level, json=settings.log_json)
-    argv = ["worker", f"--loglevel={settings.log_level}", "--queues=default,parse"]
+    queues = "default,parse,ai" if settings.ai_suggestions else "default,parse"
+    argv = ["worker", f"--loglevel={settings.log_level}", f"--queues={queues}"]
     # Celery's prefork pool isn't supported on Windows hosts (OQ-24); hard time limits then
     # only apply when the worker runs in Docker.
     argv.append("--pool=solo" if IS_WINDOWS else f"--concurrency={args.concurrency}")
@@ -156,6 +159,43 @@ def cmd_inspect_layout(args: argparse.Namespace) -> None:
         "\nEvery digit is shown as 9 and every letter as X. Check the output before sharing it.",
         file=sys.stderr,
     )
+
+
+def cmd_ai_fetch_model(args: argparse.Namespace) -> None:
+    """The one explicit download for category suggestions (ADR-0030)."""
+    from finboard.ai.embeddings import EmbeddingsUnavailable, fetch
+
+    settings = get_settings()
+    model = args.model or settings.embed_model
+    try:
+        path = fetch(model, Path(settings.model_dir))
+    except EmbeddingsUnavailable as exc:
+        sys.exit(str(exc))
+    print(f"Downloaded {model} to {path}. Embedding now runs offline.")
+
+
+def cmd_ai_eval_suggestions(args: argparse.Namespace) -> None:
+    """Compare embedding models with the trigram baseline (M3a) and write the report."""
+    from finboard.ai import evaluation
+    from finboard.ai.embeddings import EmbeddingsUnavailable, embed
+
+    settings = get_settings()
+    methods: dict[str, evaluation.Similarity] = {"trigram": evaluation.trigram_matrix}
+    for model in args.models or [
+        "sentence-transformers/all-MiniLM-L6-v2",
+        "BAAI/bge-small-en-v1.5",
+    ]:
+
+        def run(texts: object, model: str = model) -> list[list[float]]:
+            return embed(list(texts), model=model, cache_dir=Path(settings.model_dir))  # type: ignore[call-overload]
+
+        methods[model] = evaluation.embedding_matrix_for(run)
+    try:
+        report = evaluation.report(evaluation.compare(methods))
+    except EmbeddingsUnavailable as exc:
+        sys.exit(f"{exc} (fetch each model first: finboard ai fetch-model --model NAME)")
+    Path(args.out).write_text(report, encoding="utf-8")
+    print(report)
 
 
 def cmd_demo_data(_args: argparse.Namespace) -> None:
@@ -279,6 +319,19 @@ def main(argv: list[str] | None = None) -> None:
     )
     serve.set_defaults(func=cmd_serve)
 
+    ai = sub.add_parser("ai", help="optional AI features (ARCHITECTURE §18)")
+    ai_sub = ai.add_subparsers(dest="ai_command", required=True)
+    fetch_model = ai_sub.add_parser(
+        "fetch-model", help="download the embedding model once (then everything runs offline)"
+    )
+    fetch_model.add_argument("--model", help="default: FINBOARD_EMBED_MODEL")
+    fetch_model.set_defaults(func=cmd_ai_fetch_model)
+    eval_suggestions = ai_sub.add_parser(
+        "eval-suggestions", help="compare embedding models with the trigram baseline"
+    )
+    eval_suggestions.add_argument("--models", nargs="*", help="embedding models to compare")
+    eval_suggestions.add_argument("--out", default="../docs/ai-eval.md")
+    eval_suggestions.set_defaults(func=cmd_ai_eval_suggestions)
     sub.add_parser("beat", help="run the housekeeping scheduler (one only)").set_defaults(
         func=cmd_beat
     )

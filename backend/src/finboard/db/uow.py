@@ -18,6 +18,7 @@ from finboard.db.repos import (
     CategoryRepo,
     DashboardRepo,
     DataRepo,
+    EmbeddingRepo,
     ImportRepo,
     ImportRowRepo,
     JobRepo,
@@ -90,6 +91,10 @@ class UnitOfWork:
     @property
     def dashboard(self) -> DashboardRepo:
         return DashboardRepo(self.session, self.user_id)
+
+    @property
+    def embeddings(self) -> EmbeddingRepo:
+        return EmbeddingRepo(self.session, self.user_id)
 
     @property
     def data(self) -> DataRepo:

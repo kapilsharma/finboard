@@ -66,6 +66,20 @@ class Settings(BaseSettings):
     # adapter without packaging it, and tests).
     extra_parsers: list[str] = []
 
+    # Optional AI (ARCHITECTURE §18, ADR-0030). The operator makes a feature *available*; each
+    # user still opts in under Settings > AI. Both off by default.
+    ai_suggestions: bool = False
+    ai_suggest_method: Literal["auto", "embedding", "trigram"] = "auto"
+    embed_model: str = "sentence-transformers/all-MiniLM-L6-v2"
+    model_dir: Path = Path(".devdata/models")
+    ai_ask: Literal["off", "gemini", "ollama"] = "off"
+    ai_ask_sql: bool = False  # the SQL fallback path (OQ-34)
+    ai_model: str = "gemini-2.5-flash"
+    gemini_api_key: SecretStr | None = None
+    ollama_url: str = "http://127.0.0.1:11434"
+    ollama_model: str = "llama3.2:3b"
+    ai_timeout_seconds: float = 30.0
+
 
 @lru_cache
 def get_settings() -> Settings:

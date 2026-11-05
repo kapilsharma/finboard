@@ -46,3 +46,17 @@ class PayloadTooLarge(FinboardError):
 class ReconciliationMismatch(Conflict):
     code = "reconciliation_mismatch"
     title = "The statement doesn't reconcile"
+
+
+class AiFeatureOff(NotFound):
+    """The AI feature isn't available on this server, or this user hasn't turned it on."""
+
+    code = "ai_off"
+    title = "This AI feature is off"
+
+
+class AiUnavailable(ServiceUnavailable):
+    """The AI provider is rate-limiting, timing out or unreachable (ADR-0030)."""
+
+    code = "ai_unavailable"
+    title = "The AI service is busy; try again shortly"

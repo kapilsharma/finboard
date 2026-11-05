@@ -771,3 +771,46 @@ class TxnListOut(BaseModel):
 
 class DeleteAllIn(InputModel):
     confirm: str = Field(max_length=20, description='Must be exactly "DELETE ALL"')
+
+
+# ---------------------------------------------------------------- AI (optional, §18)
+
+
+class AiStatusOut(BaseModel):
+    suggestions_available: bool = Field(description="The operator made suggestions available")
+    suggestions_enabled: bool = Field(description="You turned them on")
+    suggest_method: str
+    embed_model: str
+    embedded: int
+    transactions: int
+    ask_available: bool
+    ask_enabled: bool
+    ask_provider: str
+    ask_sql: bool
+
+
+class AiSettingsIn(PatchModel):
+    not_nullable = frozenset({"suggestions", "ask"})
+
+    suggestions: bool | None = None
+    ask: bool | None = None
+
+
+class SuggestionExample(BaseModel):
+    id: uuid.UUID
+    date: dt.date
+    description: str
+    amount: Money
+    direction: Direction
+    similarity: float
+
+
+class CategorySuggestionOut(BaseModel):
+    category: CategoryRef
+    confidence: float = Field(description="Share of the neighbours' vote, 0-1")
+    examples: list[SuggestionExample]
+
+
+class SuggestionsOut(BaseModel):
+    method: Literal["embedding", "trigram"]
+    items: list[CategorySuggestionOut]

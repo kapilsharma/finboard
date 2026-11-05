@@ -143,7 +143,9 @@ class ImportService:
         registry: ParserRegistry,
         limits: ImportLimits,
         secrets: SecretStore | None = None,
+        embed_after_commit: bool = False,
     ) -> None:
+        self.embed_after_commit = embed_after_commit
         self.uow = uow
         self.blobs = blobs
         self.queue = queue
@@ -382,6 +384,10 @@ class ImportService:
         await self.uow.users.bump_data_version(self.uow.user_id)
         # New rows may complete transfers between the user's accounts (ARCHITECTURE §9).
         pairing = await self.jobs.create(TRANSFER_SUGGEST_TASK) if inserted else None
+        embedding = None
+        opted_in = self.embed_after_commit and (await self.uow.settings.all()).get("ai.suggestions")
+        if inserted and opted_in is True:
+            embedding = await self.jobs.create("ai.embed")  # M3a suggestions
         await self.uow.session.flush()
         await self.uow.commit()
         if blob_to_delete:
@@ -390,6 +396,9 @@ class ImportService:
             # The commit stands if the queue is down; pairing runs after the next commit.
             with contextlib.suppress(ServiceUnavailable):
                 await self.jobs.dispatch(pairing)
+        if embedding is not None:
+            with contextlib.suppress(ServiceUnavailable):
+                await self.jobs.dispatch(embedding)
         log.info(
             "import.committed",
             import_id=str(batch.id),

@@ -1101,3 +1101,117 @@ class DataRepo(_UserScoped):
             if found:
                 return True
         return False
+
+
+# ---------------------------------------------------------------- AI embeddings (M3a)
+
+
+@dataclass(frozen=True, slots=True)
+class NeighbourRow:
+    txn_id: uuid.UUID
+    category_id: uuid.UUID
+    similarity: float
+    date: date
+    description: str
+    amount: Decimal
+    direction: Direction
+
+
+class EmbeddingRepo(_UserScoped):
+    async def to_embed(self, model: str, limit: int) -> list[tuple[uuid.UUID, str]]:
+        """Transactions with no embedding from `model` yet (missing, or from another model)."""
+        stmt = text(
+            """
+            SELECT t.id, t.description_norm FROM txn t
+            LEFT JOIN txn_embedding e ON e.user_id = t.user_id AND e.txn_id = t.id
+            WHERE t.user_id = :u AND (e.txn_id IS NULL OR e.model <> :m)
+            ORDER BY t.id LIMIT :limit
+            """
+        )
+        rows = await self.session.execute(stmt, {"u": self.user_id, "m": model, "limit": limit})
+        return [(r[0], r[1]) for r in rows]
+
+    async def upsert(self, model: str, rows: Sequence[tuple[uuid.UUID, list[float]]]) -> None:
+        if not rows:
+            return
+        stmt = text(
+            """
+            INSERT INTO txn_embedding (user_id, txn_id, model, embedding)
+            SELECT :u, x.txn_id, :m, CAST(x.vec AS vector)
+            FROM unnest(CAST(:ids AS uuid[]), CAST(:vecs AS text[])) AS x(txn_id, vec)
+            ON CONFLICT (user_id, txn_id)
+            DO UPDATE SET model = EXCLUDED.model, embedding = EXCLUDED.embedding,
+                          created_at = now()
+            """
+        )
+        await self.session.execute(
+            stmt,
+            {
+                "u": self.user_id,
+                "m": model,
+                "ids": [r[0] for r in rows],
+                "vecs": ["[" + ",".join(repr(float(v)) for v in r[1]) + "]" for r in rows],
+            },
+        )
+
+    async def counts(self, model: str) -> tuple[int, int]:
+        """(transactions embedded with `model`, all transactions)."""
+        stmt = text(
+            """
+            SELECT (SELECT count(*) FROM txn_embedding WHERE user_id = :u AND model = :m),
+                   (SELECT count(*) FROM txn WHERE user_id = :u)
+            """
+        )
+        done, total = (await self.session.execute(stmt, {"u": self.user_id, "m": model})).one()
+        return int(done), int(total)
+
+    async def has_embedding(self, txn_id: uuid.UUID, model: str) -> bool:
+        stmt = text(
+            "SELECT EXISTS (SELECT 1 FROM txn_embedding"
+            " WHERE user_id = :u AND txn_id = :t AND model = :m)"
+        )
+        params = {"u": self.user_id, "t": txn_id, "m": model}
+        return bool(await self.session.scalar(stmt, params))
+
+    async def neighbours_by_embedding(
+        self, txn_id: uuid.UUID, model: str, k: int
+    ) -> list[NeighbourRow]:
+        """The k nearest rule- or manually-categorised transactions in the same direction,
+        by cosine similarity (exact scan; ADR-0031: no ANN index until perf needs one)."""
+        stmt = text(
+            """
+            WITH q AS (
+              SELECT e.embedding, t.direction FROM txn_embedding e
+              JOIN txn t ON t.user_id = e.user_id AND t.id = e.txn_id
+              WHERE e.user_id = :u AND e.txn_id = :t AND e.model = :m
+            )
+            SELECT n.id, n.category_id, 1 - (ne.embedding <=> q.embedding) AS similarity,
+                   n.date, n.description_raw, n.amount, n.direction
+            FROM q
+            JOIN txn_embedding ne ON ne.user_id = :u AND ne.model = :m AND ne.txn_id <> :t
+            JOIN txn n ON n.user_id = ne.user_id AND n.id = ne.txn_id
+            WHERE n.categorised_by IN ('rule', 'manual') AND n.direction = q.direction
+            ORDER BY ne.embedding <=> q.embedding
+            LIMIT :k
+            """
+        )
+        rows = await self.session.execute(
+            stmt, {"u": self.user_id, "t": txn_id, "m": model, "k": k}
+        )
+        return [NeighbourRow(*r) for r in rows]
+
+    async def neighbours_by_trigram(self, txn_id: uuid.UUID, k: int) -> list[NeighbourRow]:
+        """The same, by pg_trgm similarity of normalised descriptions (the baseline)."""
+        stmt = text(
+            """
+            WITH q AS (SELECT description_norm, direction FROM txn WHERE user_id = :u AND id = :t)
+            SELECT n.id, n.category_id, similarity(n.description_norm, q.description_norm) AS s,
+                   n.date, n.description_raw, n.amount, n.direction
+            FROM q JOIN txn n ON n.user_id = :u AND n.id <> :t
+            WHERE n.categorised_by IN ('rule', 'manual') AND n.direction = q.direction
+            ORDER BY s DESC, n.id
+            LIMIT :k
+            """
+        )
+        rows = await self.session.execute(stmt, {"u": self.user_id, "t": txn_id, "k": k})
+        return [NeighbourRow(r[0], r[1], float(r[2]), r[3], r[4], r[5], r[6]) for r in rows]
