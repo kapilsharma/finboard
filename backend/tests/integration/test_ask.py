@@ -292,3 +292,23 @@ async def test_privacy_canaries_never_leave(
 
 def test_decimal_formatting_matches_the_api() -> None:
     assert f"{Decimal('7777.7700'):.2f}" == CANARY_AMOUNT
+
+
+async def test_spec_queries_are_read_only_and_cut_off(
+    sessionmaker: async_sessionmaker[AsyncSession], alice: Principal
+) -> None:
+    """Builder SQL runs on its own READ ONLY connection with a statement timeout."""
+    from sqlalchemy.exc import DBAPIError
+
+    from finboard.domain.errors import QueryTimeout
+
+    async with unit_of_work(sessionmaker, alice.user_id) as uow:
+        with pytest.raises(QueryTimeout):
+            await uow.ask.run_read_only("SELECT pg_sleep(2)", {}, timeout_ms=200)
+        with pytest.raises(DBAPIError, match="read-only"):
+            await uow.ask.run_read_only("DELETE FROM category", {}, timeout_ms=3000)
+        assert (
+            await uow.ask.run_read_only(
+                "SELECT current_setting('app.user_id')", {}, timeout_ms=3000
+            )
+        ) == [(str(alice.user_id),)]

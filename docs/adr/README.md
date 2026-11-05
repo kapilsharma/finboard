@@ -42,3 +42,5 @@ Status values: **Accepted (given)** = fixed by HANDOVER §2 · **Accepted** · *
 | [0035](0035-categorisation-as-built.md) | Categorisation as built (M3) | Accepted |
 | [0036](0036-dashboard-as-built.md) | Dashboard and transactions as built (M4) | Accepted |
 | [0037](0037-data-and-housekeeping-as-built.md) | Your data and housekeeping as built (M5) | Accepted |
+| [0038](0038-ai-suggestions-as-built.md) | Category suggestions as built (M3a) | Accepted |
+| [0039](0039-ask-finboard-as-built.md) | Ask Finboard as built (M4a) | Accepted |

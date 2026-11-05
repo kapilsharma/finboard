@@ -679,13 +679,18 @@ flowchart LR
 |---|---|---|
 | `ai/__init__.py` | Forces LangSmith/LangChain tracing off at import (env override) | — |
 | `ai/embeddings.py` | Load the ONNX model once per worker process, embed text in batches | `core` |
+| `ai/text.py` | The text that gets embedded: a description's merchant words, without narration boilerplate; the versioned embedding key ([ADR-0038](adr/0038-ai-suggestions-as-built.md)) | `categorisation` |
 | `ai/suggest.py` | kNN vote → `Suggestion(category_id, confidence, examples)` (pure, given neighbours) | `domain` |
+| `ai/trigram.py`, `ai/evaluation.py` | pg_trgm-identical similarity (the baseline and fallback); the suggestion evaluation and calibration | `categorisation` |
 | `ai/spec.py` | `QuerySpec` Pydantic model + deterministic SQL builder on the §12 metric definitions | `domain` |
 | `ai/sql_guard.py` | `sqlglot`: one SELECT, `ai_txn`/`ai_budget` only, **function allow-list**, transpile Postgres → SQLite | stdlib, `sqlglot` |
 | `ai/sandbox.py` | Per-request in-memory SQLite: load the caller's rows, `set_authorizer` (reads + allow-listed functions only), `query_only`, 3 s progress-handler cut-off, 1,000-row cap | stdlib |
 | `ai/graph.py` | LangGraph state graph for Ask. State holds ids and shape summaries, never rows | `ai.*` |
 | `ai/llm.py` | **The only outbound module.** Builds the allow-listed request (account aliases, locally generated retry messages), calls the provider, maps 429/timeout to `AiUnavailable` | `core`, LangChain |
 | `ai/catalog.yaml` | Sandbox table and column descriptions used in prompts; versioned | — |
+| `ai/allowlist.py` | Tables and functions allowed in model SQL, shared by the guard and the sandbox's authorizer (plain data) | — |
+| `ai/results.py` | Result store, shape summaries, chart choice and the templated answer (all local) | — |
+| `services/ask.py`, `services/ask_eval.py` | Ask, history, pins and widgets; `finboard ai eval` ([ADR-0039](adr/0039-ask-finboard-as-built.md)) | `ai`, `db`, `domain` |
 | `services/ai.py` | Use cases: suggestions, ask, history, pins. Imports AI libraries lazily; reports features unavailable without the `ai` extra | `ai`, `db`, `domain` |
 | `jobs/tasks.py` | `ai.embed(txn_ids)`, `ai.embed_all()` on the `ai` queue (concurrency 1, keeps RAM low). `finboard worker` consumes `ai` when suggestions are available | `services` |
 
@@ -703,10 +708,10 @@ flowchart LR
 | SQLite sandbox | tables `ai_txn`, `ai_budget` with the views' columns; money as integer `signed_paise` / `limit_paise` | Created per request in memory, discarded afterwards. The only place model-written SQL runs |
 
 ### Category suggestions (M3a)
-1. After an import commits, `ai.embed` embeds `description_norm` for the new transactions. The text has no amounts or reference numbers; the normaliser already strips them.
+1. After an import commits, `ai.embed` embeds the merchant words of `description_norm` (`ai/text.py`) for the new transactions. The text has no amounts, reference numbers or narration boilerplate (channels, bank codes, UPI handles), which otherwise makes unrelated merchants look alike ([ADR-0038](adr/0038-ai-suggestions-as-built.md)).
 2. For a transaction under review, the service fetches the 10 nearest embeddings among the user's transactions with `categorised_by IN (rule, manual)` (cosine distance, same direction), weights votes by similarity, and returns the top 3 above a confidence floor.
 3. The UI shows each suggestion with its closest examples. **Accept** sets the category manually. **Make a rule** opens the M3 rule editor pre-filled. Nothing is applied automatically.
-4. **Evaluation** uses generated description variants (typos, different UPI handles, truncation, reordered tokens), not exact repeats, which rules would already catch. It is compared with a simple baseline (character n-gram TF-IDF / `rapidfuzz`). The embedding approach ships only if it beats the baseline.
+4. **Evaluation** uses generated description variants (typos, different UPI handles, truncation, reordered tokens), not exact repeats, which rules would already catch, plus merchants the user never categorised (the right answer there is no suggestion). It is compared with the pg_trgm trigram baseline, which is also the fallback for transactions not yet embedded. Sharpness and the "too different to vote" cut-off are tuned on one seed and reported on four others; unit tests keep the served values equal to the evaluation's. The embedding approach ships only if it beats the baseline (it does: 0.948 vs 0.764 held-out top-1, [ai-eval.md](ai-eval.md)).
 
 ### Ask Finboard (M4a)
 - The flow and the guard and sandbox layers are in [ADR-0032](adr/0032-nl-analytics-langgraph.md). Spec path first (runs in Postgres, no model-written SQL), SQL path as a fallback (runs only in the SQLite sandbox), at most 2 retries, and a clarifying question when the request is ambiguous.
