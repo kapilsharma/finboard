@@ -34,6 +34,11 @@ generic_table = "finboard.parsers.builtin.generic_table.parser:GenericTableParse
 [project.entry-points."finboard.parser_fixtures"]
 generic_table = "finboard.parsers.builtin.generic_table.fixtures:GenericTableFixtures"
 
+[project.optional-dependencies]
+ai = [
+    "fastembed>=0.7",
+]
+
 [dependency-groups]
 dev = [
     "pytest>=8.3,<9",
