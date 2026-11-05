@@ -2,11 +2,15 @@ import asyncio
 
 from alembic import context
 from sqlalchemy import Connection, text
+from sqlalchemy.dialects.postgresql.base import ischema_names
 from sqlalchemy.ext.asyncio import create_async_engine
 
 from finboard.core.config import get_settings
 from finboard.db import models  # noqa: F401  (registers tables on Base.metadata)
 from finboard.db.base import Base
+from finboard.db.vector import Vector
+
+ischema_names["vector"] = Vector  # so autogenerate/check can reflect pgvector columns
 
 target_metadata = Base.metadata
 
