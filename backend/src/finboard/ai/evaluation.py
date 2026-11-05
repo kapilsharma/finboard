@@ -419,14 +419,15 @@ def report(
         "|---|---|---|---|---|---|",
     ]
     for r in results:
-
-        def avg(field: str, r: MethodResult = r) -> float:
-            return sum(getattr(s, field) for s in r.held_out.values()) / len(r.held_out)
-
+        n = len(r.held_out)
+        mean = {
+            f: sum(float(getattr(s, f)) for s in r.held_out.values()) / n
+            for f in ("covered", "precision_covered", "unseen_suggested", "utility")
+        }
         lines.append(
-            f"| {r.method} | {r.min_similarity:.2f} | {avg('covered'):.3f} | "
-            f"{avg('precision_covered'):.3f} | {avg('unseen_suggested'):.3f} | "
-            f"{avg('utility'):.3f} |"
+            f"| {r.method} | {r.min_similarity:.2f} | {mean['covered']:.3f} | "
+            f"{mean['precision_covered']:.3f} | {mean['unseen_suggested']:.3f} | "
+            f"{mean['utility']:.3f} |"
         )
     lines += ["", "## By kind of variant (mean over held-out seeds)", ""]
     kinds = sorted(next(iter(results[0].held_out.values())).by_variant)
