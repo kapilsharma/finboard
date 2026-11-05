@@ -3,6 +3,7 @@ from fastapi import APIRouter
 from finboard.api.routers import (
     accounts,
     ai,
+    ask,
     budgets,
     categories,
     dashboard,
@@ -33,6 +34,7 @@ for module in (
     review,
     transfers,
     rules,
+    ask,  # before dashboard: /dashboard/widgets
     dashboard,
     budgets,
     data,

@@ -814,3 +814,78 @@ class CategorySuggestionOut(BaseModel):
 class SuggestionsOut(BaseModel):
     method: Literal["embedding", "trigram"]
     items: list[CategorySuggestionOut]
+
+
+# ---------------------------------------------------------------- Ask Finboard (M4a)
+
+Cell = str | int | float | None
+
+
+class AskIn(InputModel):
+    question: str = Field(min_length=3, max_length=500)
+
+
+class ResultColumnOut(BaseModel):
+    name: str
+    kind: Literal["text", "month", "date", "money", "count", "number"]
+
+
+class ChartOut(BaseModel):
+    kind: Literal["bar", "grouped_bar", "line", "table"]
+    x: str | None = None
+    series: str | None = None
+    y: str | None = None
+
+
+class AskResultOut(BaseModel):
+    columns: list[ResultColumnOut]
+    rows: list[list[Cell]] = Field(description="Money as decimal strings, dates as ISO text")
+    truncated: bool
+
+
+class AskQueryOut(BaseModel):
+    id: uuid.UUID
+    question: str
+    status: Literal["ok", "clarify", "failed"]
+    path: Literal["spec", "sql"] | None
+    spec: dict[str, Any] | None
+    sql: str | None
+    chart: ChartOut | None
+    clarification: str | None
+    error: str | None
+    retries: int
+    latency_ms: int
+    model: str | None
+    tokens_in: int | None
+    tokens_out: int | None
+    created_at: dt.datetime
+    pinned: bool = False
+
+
+class AskOut(BaseModel):
+    query: AskQueryOut
+    answer: str | None
+    result: AskResultOut | None
+
+
+class AskHistoryOut(BaseModel):
+    items: list[AskQueryOut]
+
+
+class PinIn(InputModel):
+    title: str | None = Field(default=None, max_length=200)
+
+
+class WidgetOut(BaseModel):
+    id: uuid.UUID
+    title: str
+    sort_order: int
+    status: Literal["ok", "needs_update", "failed"]
+    message: str | None
+    query: AskQueryOut
+    chart: ChartOut | None
+    result: AskResultOut | None
+
+
+class WidgetListOut(BaseModel):
+    items: list[WidgetOut]

@@ -55,6 +55,13 @@ class AiFeatureOff(NotFound):
     title = "This AI feature is off"
 
 
+class QueryTimeout(ServiceUnavailable):
+    """A read-only Ask query ran past its statement timeout."""
+
+    code = "query_timeout"
+    title = "That question took too long to answer"
+
+
 class AiUnavailable(ServiceUnavailable):
     """The AI provider is rate-limiting, timing out or unreachable (ADR-0030)."""
 

@@ -21,6 +21,7 @@ from finboard.core.config import Mode, Settings, get_settings
 from finboard.core.logging import configure_logging
 from finboard.db.engine import create_engine, create_sessionmaker
 from finboard.parsers.registry import default_registry
+from finboard.services.ask import LlmFactory, default_llm_factory
 from finboard.services.jobs import JobQueue
 from finboard.services.users import ensure_local_user
 from finboard.storage.blob import LocalFsBlobStore
@@ -47,8 +48,10 @@ def create_app(
     *,
     auth_backend: AuthBackend | None = None,
     job_queue: JobQueue | None = None,
+    llm_factory: LlmFactory | None = None,
 ) -> FastAPI:
     settings = settings or get_settings()
+    llm_factory = llm_factory or default_llm_factory(settings)
     if settings.mode is Mode.SERVER:
         raise RuntimeError(
             "FINBOARD_MODE=server needs a real authentication backend, which doesn't exist yet "
@@ -95,6 +98,7 @@ def create_app(
     app.state.settings = settings
     app.state.auth_backend = auth_backend
     app.state.job_queue = job_queue
+    app.state.llm_factory = llm_factory  # tests inject a scripted model
 
     install_error_handlers(app)
     app.include_router(api_router, prefix="/api/v1")

@@ -16,6 +16,7 @@ from finboard.domain.errors import Unauthenticated
 from finboard.parsers.registry import ParserRegistry
 from finboard.services.accounts import AccountService
 from finboard.services.ai import AiConfig, AiSettingsService, SuggestionService
+from finboard.services.ask import AskService
 from finboard.services.budgets import BudgetService
 from finboard.services.categories import CategoryService
 from finboard.services.dashboard import DashboardService
@@ -130,12 +131,18 @@ def get_ai_settings_service(request: Request, uow: UowDep, queue: QueueDep) -> A
     return AiSettingsService(uow, AiConfig.from_settings(request.app.state.settings), queue)
 
 
+def get_ask_service(request: Request, uow: UowDep) -> AskService:
+    settings = request.app.state.settings
+    return AskService(uow, AiConfig.from_settings(settings), request.app.state.llm_factory)
+
+
 def get_suggestion_service(request: Request, uow: UowDep) -> SuggestionService:
     return SuggestionService(uow, AiConfig.from_settings(request.app.state.settings))
 
 
 SettingsDep = Annotated[Settings, Depends(get_settings)]
 AiSettingsServiceDep = Annotated[AiSettingsService, Depends(get_ai_settings_service)]
+AskServiceDep = Annotated[AskService, Depends(get_ask_service)]
 SuggestionServiceDep = Annotated[SuggestionService, Depends(get_suggestion_service)]
 DataServiceDep = Annotated[DataService, Depends(get_data_service)]
 DashboardServiceDep = Annotated[DashboardService, Depends(get_dashboard_service)]
