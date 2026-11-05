@@ -1,0 +1,75 @@
+# Golden questions for `finboard ai eval` (ADR-0032 §5), over the synthetic demo data
+# (docs/handover/design/sample-transactions.csv: July-September 2026) with today = 2026-09-30.
+# Each has a reference answer: a QuerySpec (run by the deterministic builder) or SQL (run in
+# the sandbox). A model's answer is correct when its rows equal the reference rows.
+today: "2026-09-30"
+questions:
+  - q: Give me a monthly breakdown of eating out and provisions for the last three months
+    spec: {metric: spending, categories: [Dining out, Groceries], group_by: [month, category], last_months: 3}
+  - q: How much did I spend in September 2026?
+    spec: {metric: spending, start: "2026-09-01", end: "2026-09-30"}
+  - q: What was my total income in August?
+    spec: {metric: income, start: "2026-08-01", end: "2026-08-31"}
+  - q: Spending by category this month
+    spec: {metric: spending, group_by: [category], last_months: 1}
+  - q: What were my top 5 spending categories over the last three months?
+    spec: {metric: spending, group_by: [category], top: 5, last_months: 3}
+  - q: Show my monthly spending trend
+    spec: {metric: spending, group_by: [month]}
+  - q: How much did I spend on groceries each month?
+    spec: {metric: spending, categories: [Groceries], group_by: [month]}
+  - q: Net savings by month
+    spec: {metric: net, group_by: [month]}
+  - q: How much did I invest each month?
+    spec: {metric: invested, group_by: [month]}
+  - q: How many transactions did I have in July 2026?
+    spec: {metric: count, start: "2026-07-01", end: "2026-07-31"}
+  - q: Spending on my credit card by month
+    spec: {metric: spending, accounts: [Account A], group_by: [month]}
+  - q: Spending by account in September
+    spec: {metric: spending, group_by: [account], start: "2026-09-01", end: "2026-09-30"}
+  - q: How much have I spent on Swiggy and Zomato?
+    spec: {metric: spending, merchant: SWIGGY}
+  - q: Dining out spend in August 2026
+    spec: {metric: spending, categories: [Dining out], start: "2026-08-01", end: "2026-08-31"}
+  - q: Income by category over the last three months
+    spec: {metric: income, group_by: [category], last_months: 3}
+  - q: Transport costs by month
+    spec: {metric: spending, categories: [Transport], group_by: [month]}
+  - q: Which merchants did I spend the most at in September? Top 5
+    spec: {metric: spending, group_by: [merchant], top: 5, start: "2026-09-01", end: "2026-09-30"}
+  - q: Utilities spending this quarter
+    spec: {metric: spending, categories: [Utilities], start: "2026-07-01", end: "2026-09-30"}
+  - q: Health and entertainment spending by month
+    spec: {metric: spending, categories: [Health, Entertainment], group_by: [month, category]}
+  - q: What did I pay in rent from July to September?
+    spec: {metric: spending, categories: [Rent], start: "2026-07-01", end: "2026-09-30"}
+  - q: Shopping spend per month
+    spec: {metric: spending, categories: [Shopping], group_by: [month]}
+  - q: How much interest have I earned?
+    spec: {metric: income, categories: [Interest]}
+  - q: What was my net saving in July 2026?
+    spec: {metric: net, start: "2026-07-01", end: "2026-07-31"}
+  - q: Number of grocery transactions per month
+    spec: {metric: count, categories: [Groceries], group_by: [month]}
+  - q: Spending from my savings account in August
+    spec: {metric: spending, accounts: [Account B], start: "2026-08-01", end: "2026-08-31"}
+  - q: How much cash did I withdraw?
+    spec: {metric: spending, categories: [Cash]}
+  - q: Loan EMI payments by month
+    spec: {metric: spending, categories: [Loan EMI], group_by: [month]}
+  - q: Total spending last month
+    spec: {metric: spending, start: "2026-08-01", end: "2026-08-31"}
+  - q: What is my average monthly spending?
+    sql: >-
+      WITH m AS (SELECT month, SUM(signed_paise) AS s FROM ai_txn WHERE type = 'expense'
+      GROUP BY month) SELECT ROUND(AVG(s)) AS average_paise FROM m
+  - q: In which months did I spend more than I earned?
+    sql: >-
+      SELECT month FROM ai_txn GROUP BY month HAVING SUM(CASE WHEN type = 'expense'
+      THEN signed_paise ELSE 0 END) > SUM(CASE WHEN type = 'income' THEN signed_paise ELSE 0 END)
+  - q: Which categories went over their budget in September 2026?
+    sql: >-
+      SELECT t.category FROM ai_txn t JOIN ai_budget b ON b.month = t.month AND
+      b.category = t.category WHERE t.month = '2026-09' AND t.type = 'expense'
+      GROUP BY t.category, b.limit_paise HAVING SUM(t.signed_paise) > b.limit_paise

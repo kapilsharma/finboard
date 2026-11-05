@@ -11,6 +11,7 @@ finboard parsers   list installed statement parsers (and any that failed to load
 finboard inspect-layout <pdf>   print a statement's structure with contents masked
 finboard ai fetch-model  download the embedding model once (optional AI, ARCHITECTURE §18)
 finboard ai eval-suggestions  compare embeddings with the trigram baseline -> docs/ai-eval.md
+finboard ai eval         golden Ask questions against the real provider -> docs/ai-eval.md
 finboard demo-data synthetic sample transactions and limits for the local user (empty DB only)
 """
 
@@ -194,8 +195,55 @@ def cmd_ai_eval_suggestions(args: argparse.Namespace) -> None:
         report = evaluation.report(evaluation.compare(methods))
     except EmbeddingsUnavailable as exc:
         sys.exit(f"{exc} (fetch each model first: finboard ai fetch-model --model NAME)")
-    Path(args.out).write_text(report, encoding="utf-8")
+    out = Path(args.out)
+    existing = out.read_text("utf-8") if out.exists() else ""
+    marker = "<!-- ask-eval:start -->"  # keep the Ask report (finboard ai eval) below
+    kept = existing[existing.index(marker) :] if marker in existing else ""
+    out.write_text(report.rstrip("\n") + ("\n\n" + kept if kept else "\n"), encoding="utf-8")
     print(report)
+
+
+def cmd_ai_eval(args: argparse.Namespace) -> None:
+    """Golden questions through the real Ask pipeline and provider (M4a). Manual: it calls
+    the configured provider, about 30-90 requests."""
+    import asyncio
+
+    from finboard.db.engine import create_engine, create_sessionmaker
+    from finboard.services.ai import AiConfig
+    from finboard.services.ask import default_llm_factory
+    from finboard.services.ask_eval import report, run_eval, write_section
+
+    settings = get_settings()
+    if args.model:
+        field = "ai_model" if settings.ai_ask == "gemini" else "ollama_model"
+        settings = settings.model_copy(update={field: args.model})
+    factory = default_llm_factory(settings)
+    if factory is None:
+        sys.exit("Set FINBOARD_AI_ASK=gemini (and FINBOARD_GEMINI_API_KEY) or ollama first.")
+    config = AiConfig.from_settings(settings)
+
+    async def run() -> str:
+        engine = create_engine(settings)
+        try:
+            outcomes = await run_eval(
+                create_sessionmaker(engine),
+                config,
+                factory,
+                delay=args.delay,
+                limit=args.limit,
+                progress=lambda o: print(
+                    f"{'ok ' if o.correct else 'NO '} {o.path or '-':4} {o.latency_ms:>6} ms  "
+                    f"{o.question}",
+                    file=sys.stderr,
+                ),
+            )
+        finally:
+            await engine.dispose()
+        return report(outcomes, model=config.ai_model, ask_sql=config.ask_sql)
+
+    section = asyncio.run(run())
+    write_section(Path(args.out), section)
+    print(section)
 
 
 def cmd_demo_data(_args: argparse.Namespace) -> None:
@@ -332,6 +380,14 @@ def main(argv: list[str] | None = None) -> None:
     eval_suggestions.add_argument("--models", nargs="*", help="embedding models to compare")
     eval_suggestions.add_argument("--out", default="../docs/ai-eval.md")
     eval_suggestions.set_defaults(func=cmd_ai_eval_suggestions)
+    ask_eval = ai_sub.add_parser(
+        "eval", help="run the golden Ask questions against the configured provider"
+    )
+    ask_eval.add_argument("--model", help="provider model id (default: FINBOARD_AI_MODEL)")
+    ask_eval.add_argument("--delay", type=float, default=4.0, help="seconds between questions")
+    ask_eval.add_argument("--limit", type=int, help="only the first N questions")
+    ask_eval.add_argument("--out", default="../docs/ai-eval.md")
+    ask_eval.set_defaults(func=cmd_ai_eval)
     sub.add_parser("beat", help="run the housekeeping scheduler (one only)").set_defaults(
         func=cmd_beat
     )

@@ -27,6 +27,9 @@ ALLOWED = [
     "SELECT t.month, b.limit_paise FROM ai_txn t JOIN ai_budget b ON b.month = t.month",
     "SELECT category, RANK() OVER (ORDER BY SUM(signed_paise) DESC) FROM ai_txn GROUP BY category",
     "SELECT to_char(date::date, 'YYYY-MM') AS mo, COUNT(*) FROM ai_txn GROUP BY 1",
+    "SELECT * FROM ai_txn WHERE type = 'expense' AND (month = '2026-09' OR NOT direction = 'credit')"
+    " AND signed_paise BETWEEN 1 AND 100 AND category IN ('A', 'B') AND parent_category IS NULL"
+    " AND merchant || 'x' LIKE '%x' AND signed_paise % 2 = 0 AND -signed_paise < 0",
 ]
 
 ATTACKS = [

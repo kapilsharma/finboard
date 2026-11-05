@@ -52,6 +52,8 @@ _FORBIDDEN_NODES: tuple[type[exp.Expression], ...] = (
     exp.Use, exp.Copy, exp.Lateral, exp.TableSample, exp.Placeholder, exp.Parameter,
     exp.SessionParameter,
 )  # fmt: skip
+# sqlglot models some operators (AND, OR, NOT, ...) as Func nodes; they aren't functions.
+_OPERATORS = (exp.Connector, exp.Binary, exp.Unary)
 _TRUNC_UNITS = {"MONTH": "start of month", "YEAR": "start of year", "DAY": None}
 _EXTRACT_FORMATS = {"YEAR": "%Y", "MONTH": "%m", "DAY": "%d"}
 
@@ -95,7 +97,7 @@ def guard(sql: str) -> Guarded:
             raise GuardRejected(f"{type(node).__name__.upper()} is not allowed")
         if isinstance(node, exp.Table):
             _check_table(node, ctes)
-        elif isinstance(node, exp.Func):
+        elif isinstance(node, exp.Func) and not isinstance(node, _OPERATORS):
             name = _function_name(node)
             if name not in ALLOWED_FUNCTIONS:
                 raise GuardRejected(f"function {name.lower()} is not allowed")
