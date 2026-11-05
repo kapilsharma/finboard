@@ -93,6 +93,8 @@ TASKS = {
     "data.export": tasks.export_data,
     "data.import": tasks.import_data,
     "data.delete_user_data": tasks.delete_user_data,
+    "ai.embed": tasks.embed,
+    "ai.embed_all": tasks.embed_all,
 }
 
 

@@ -24,10 +24,7 @@ from finboard.db.models import EMBEDDING_DIMENSIONS
 from finboard.jobs import tasks
 from finboard.main import create_app
 
-from .conftest import TASKS, HeaderAuthBackend, RecordingJobQueue
-
-TASKS.setdefault("ai.embed", tasks.embed)
-TASKS.setdefault("ai.embed_all", tasks.embed_all)
+from .conftest import HeaderAuthBackend, RecordingJobQueue
 
 API = "/api/v1"
 
