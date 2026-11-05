@@ -38,7 +38,7 @@ jobs:
       - name: Backend
         working-directory: backend
         run: |
-          uv sync --locked
+          uv sync --locked --extra ai
           uv run ruff check src tests
           uv run ruff format --check src tests
           uv run mypy
@@ -94,10 +94,10 @@ jobs:
       - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3 (no moving major tags since v8; pin by SHA)
         with:
           enable-cache: true
-      - name: Tests (integration + tenancy + unit)
+      - name: Tests (integration + tenancy + unit), with the optional ai extra
         working-directory: backend
         run: |
-          uv sync --locked
+          uv sync --locked --extra ai
           uv run pytest
 
   backend-portable:
@@ -114,7 +114,7 @@ jobs:
       - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3 (no moving major tags since v8; pin by SHA)
         with:
           enable-cache: true
-      - name: Pure tests and the parser contract suite (no database)
+      - name: Pure tests and the parser contract suite (no database, no ai extra)
         working-directory: backend
         run: |
           uv sync --locked

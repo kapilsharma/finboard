@@ -28,7 +28,6 @@ from finboard.ai.llm import AccountAlias, LlmClient
 from finboard.ai.results import Chart, Result, choose_chart
 from finboard.ai.sandbox import SandboxError, SandboxRows
 from finboard.ai.spec import BuiltQuery, CategoryPath, QuerySpec, SpecError, build
-from finboard.ai.sql_guard import GuardRejected, guard
 from finboard.core.config import Settings
 from finboard.db.models import AskQuery, DashboardWidget
 from finboard.db.uow import UnitOfWork
@@ -214,6 +213,8 @@ class AskService:
     async def widgets(self) -> list[WidgetView]:
         """Re-run every pinned question locally (no LLM call)."""
         await self._require_enabled()
+        from finboard.ai.sql_guard import GuardRejected, guard  # needs the ai extra
+
         catalog = catalog_module.load()
         categories = await self._categories()
         aliases = [a.alias for a in await self.uow.ask.aliases()]

@@ -24,8 +24,8 @@ from dataclasses import dataclass
 from decimal import Decimal
 from typing import Any
 
+from finboard.ai.allowlist import SQLITE_FUNCTIONS
 from finboard.ai.results import Result, from_paise
-from finboard.ai.sql_guard import SQLITE_FUNCTIONS
 
 TIMEOUT_SECONDS = 3.0
 MAX_ROWS = 1000
