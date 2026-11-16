@@ -29,10 +29,12 @@ finboard = "finboard.cli:main"
 # Parsers are discovered through entry points, built-ins included (ADR-0009).
 [project.entry-points."finboard.parsers"]
 generic_table = "finboard.parsers.builtin.generic_table.parser:GenericTableParser"
+icici_savings_pdf = "finboard.parsers.builtin.icici_savings_pdf.parser:IciciSavingsPdfParser"
 
 # Synthetic fixture builders for the contract suite, keyed by parser id (ADR-0033).
 [project.entry-points."finboard.parser_fixtures"]
 generic_table = "finboard.parsers.builtin.generic_table.fixtures:GenericTableFixtures"
+icici_savings_pdf = "finboard.parsers.builtin.icici_savings_pdf.fixtures:IciciSavingsFixtures"
 
 [project.optional-dependencies]
 ai = [

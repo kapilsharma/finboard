@@ -809,7 +809,12 @@ def _safe_file_name(name: str) -> str:
 
 
 def _candidates(candidates: Sequence[Any]) -> list[dict[str, Any]]:
-    return [{"id": c.parser_id, "name": c.name, "confidence": c.confidence} for c in candidates[:5]]
+    """The best five, plus any fallback parser that missed the cut. When nothing matched,
+    every score is 0 and specific parsers sort first, so with several banks installed the
+    generic parser (the likeliest manual choice for an unknown layout) would drop out."""
+    shown = list(candidates[:5])
+    shown += [c for c in candidates[5:] if c.fallback]
+    return [{"id": c.parser_id, "name": c.name, "confidence": c.confidence} for c in shown]
 
 
 def _suggestion(
