@@ -113,3 +113,19 @@ What its layout taught us:
 Adapters can also live in their own package: register the same two entry-point groups in that
 package's `pyproject.toml`. While you develop one, `FINBOARD_EXTRA_PARSERS='["my_pkg.parser:MyParser"]'`
 loads it without packaging.
+
+## Releasing
+
+A release is a tag. `.github/workflows/release.yml` then smoke-tests the stack, publishes the
+images to GHCR (`:X.Y.Z`, `:X.Y`, `:latest`, and the same with `-ai`), and creates the GitHub
+release with the changelog section as its notes and the SBOMs attached.
+
+1. Set the version in `backend/pyproject.toml`, `backend/src/finboard/__init__.py` and
+   `frontend/package.json`, then run `uv lock` in `backend/` (the lock file records it).
+2. In `CHANGELOG.md`, rename `[Unreleased]` to `[X.Y.Z] - YYYY-MM-DD` and start a new, empty
+   `[Unreleased]` above it.
+3. Merge that to `main` with green CI, then `git tag vX.Y.Z && git push origin vX.Y.Z`.
+
+The workflow refuses a tag whose version doesn't match the package or has no changelog
+section. After the very first release, make the `finboard` package public once in GitHub
+(Packages › finboard › Package settings), or `docker compose pull` will ask for a login.
