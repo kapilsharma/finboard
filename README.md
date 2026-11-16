@@ -42,8 +42,10 @@ Open **http://127.0.0.1:8765**.
   `docker compose -f deploy/compose.yaml exec api finboard demo-data`.
   Settings › Data › Delete all removes it again.
 
-Finboard has no login: anyone who can use your computer's browser can open it. Use OS disk
-encryption (BitLocker, FileVault, LUKS) to protect the data at rest.
+Run this way, Finboard has no login: anyone who can use your computer's browser can open it.
+Use OS disk encryption (BitLocker, FileVault, LUKS) to protect the data at rest. To share one
+Finboard between several people, each with their own sign-in, see
+[Hosting for several people](docs/HOSTING.md).
 
 ### Upgrade
 
@@ -70,6 +72,21 @@ Finboard). That file holds your finances in plain form: store it somewhere encry
 | `FINBOARD_IMAGE` | `ghcr.io/kapilsharma/finboard:latest` | Image to run; pin a version like `:1.0.0` if you prefer |
 | `FINBOARD_API_WORKERS` | `2` | API processes |
 | `FINBOARD_WORKER_CONCURRENCY` | `2` | Statements parsed at the same time |
+
+## Several people on one server (optional)
+
+**Server mode** adds sign-in: each person has a username and password and sees only their own
+data. It needs a domain name and a TLS reverse proxy, and accounts are created from the
+command line unless you open sign-up. Everything is in [docs/HOSTING.md](docs/HOSTING.md).
+
+To try it on your own machine first, add to `deploy/.env`:
+
+```sh
+FINBOARD_PUBLIC_URL=http://127.0.0.1:8765
+FINBOARD_SIGNUP=open
+```
+
+and start with `docker compose -f deploy/compose.yaml -f deploy/compose.server.yaml up -d`.
 
 ## AI features (optional, off by default)
 

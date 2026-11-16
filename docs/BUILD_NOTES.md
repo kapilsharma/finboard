@@ -14,6 +14,7 @@ definition of done.
 | [M3a Category suggestions](#m3a-category-suggestions) | #6 | [0038](adr/0038-ai-suggestions-as-built.md) |
 | [M4a Ask Finboard](#m4a-ask-finboard) | #7 | [0039](adr/0039-ask-finboard-as-built.md) |
 | [M7 Packaging](#m7-packaging) | #8 | [0040](adr/0040-packaging-as-built.md) |
+| [M8 Multi-user login](#m8-multi-user-login) | #21 | [0041](adr/0041-server-mode-as-built.md) |
 
 ---
 
@@ -232,3 +233,47 @@ Optional and off by default: the operator sets `FINBOARD_AI_ASK=gemini|ollama` (
   - the release workflow, which first runs on the owner's first tag;
   - the arm64 image;
   - Ask Finboard and suggestions end to end inside the `-ai` image. The image builds, and the baked-in model embeds with the network disabled; the features themselves were tested outside Docker in M3a and M4a.
+
+---
+
+## M8 Multi-user login
+
+Optional: `FINBOARD_MODE=server`. Local mode is unchanged and stays the default.
+
+### What's built
+- **Sign-in:**
+  - passwords hashed with argon2id;
+  - sessions in Redis, with the browser holding only a random id in an HttpOnly SameSite=Strict cookie;
+  - a per-session CSRF token required on every change.
+- **Accounts:** sign up (only when the operator opens it), sign in, sign out, change password. `finboard create-user` and `finboard set-password` for the operator; `set-password local` moves a local-mode database to server mode.
+- **UI:** a sign-in page in place of the app when nobody is signed in, the signed-in name and Sign out in the header, and a password form under Settings › Preferences. A session that ends elsewhere returns the tab to the sign-in page.
+- **Limits per person:** requests per minute, uploads per hour, 5 GB of stored statements. Five wrong passwords lock an account's sign-in for 15 minutes.
+- **Storage:** `S3BlobStore` for any S3-compatible store, in the optional `s3` extra and a `-s3` image.
+- **Deployment:** `deploy/compose.server.yaml` and [HOSTING.md](HOSTING.md), with Caddy and nginx examples.
+- **Tests:**
+  - the tenancy suite runs a second time, unchanged, against real sessions (`FINBOARD_TEST_AUTH=session`);
+  - 28 sign-in tests against real Redis;
+  - the S3 store against moto;
+  - Playwright in server mode: two people in two browsers, axe in light and dark, 400 px.
+- **Found along the way:** six API processes with the default connection pool exhaust Postgres's 100 connections and return 500s. The server compose file uses a smaller pool, and the hosting guide gives the rule.
+
+### Load test
+300 signed-in users, each with their own data, on the owner's laptop (8 logical cores, Windows, Postgres in Docker, Locust on the same machine):
+
+| Setup | Requests | Failures | Requests/s | Median | p95 |
+|---|---|---|---|---|---|
+| Server mode, 3 API processes, 100 users | 4,599 | 0 | 83 | 45 ms | 140 ms |
+| Server mode, 6 API processes, 300 users | 20,152 | 0 | 168 | 510 ms | 1,500 ms |
+| Local mode, 6 API processes, 300 users | 19,051 | 0 | 158 | 590 ms | 1,800 ms |
+
+The laptop saturates near 160 requests a second, so 300 users run without errors but well over the 300 ms budget. Sessions aren't the cost: local mode at the same load is no faster.
+
+### Deviations
+- **Sign-up is closed by default.**
+- **The password hash is a column on `app_user`,** not a separate credentials table.
+- **No email:** no password reset by email, and no admin UI, two-factor sign-in or OIDC.
+- **`AuthBackend.authenticate` takes the HTTP method,** so the session backend can require the CSRF token on changes.
+- **Not exercised:**
+  - the S3 store against a real S3 service (moto only);
+  - a real TLS proxy in front of the stack (the guide's Caddy and nginx examples are untested);
+  - the 300-user load on hardware that isn't saturated.

@@ -45,3 +45,4 @@ Status values: **Accepted (given)** = fixed by HANDOVER §2 · **Accepted** · *
 | [0038](0038-ai-suggestions-as-built.md) | Category suggestions as built (M3a) | Accepted |
 | [0039](0039-ask-finboard-as-built.md) | Ask Finboard as built (M4a) | Accepted |
 | [0040](0040-packaging-as-built.md) | Packaging as built (M7) | Accepted |
+| [0041](0041-server-mode-as-built.md) | Server mode as built: sessions, sign-up, limits, S3 (M8) | Accepted |

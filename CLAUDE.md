@@ -69,6 +69,10 @@ If you add a CI step, add it to `scripts/ci-local.sh` too (and vice versa).
   Arguments are ids only, never data or secrets. Tests use `RecordingJobQueue` and call the
   task body directly.
 - Mutating requests need the header `X-Finboard-Client: 1` (CSRF guard, ADR-0015).
+- Two modes (ADR-0041): `local` (default, one user, no sign-in) and `server` (sessions,
+  `X-CSRF-Token`, per-user limits). Anything touching auth must keep local mode unchanged.
+  `FINBOARD_TEST_AUTH=session uv run pytest tests/integration/tenancy` runs the tenancy
+  suite against real sessions; new tenancy tests must pass both ways.
 
 ## Frontend conventions
 - Server state in TanStack Query (`src/api/hooks.ts`); UI state (month, filters) in the URL.

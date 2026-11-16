@@ -564,14 +564,14 @@ Percentages are rounded once, to one decimal place (half up), in `metrics.py`: t
 
 | Concern | v1 (local mode) | Ready for server mode |
 |---|---|---|
-| Exposure | Compose publishes **`127.0.0.1:8765:8000`** only. Postgres and Redis are **not published** (internal network) | TLS reverse proxy; `FINBOARD_MODE=server` refuses to start without an auth backend + TLS-terminated proxy config |
-| Authentication | `LocalSingleUserBackend`: every request is the single `local` user | `SessionBackend`: argon2id passwords, server-side sessions in Redis, HttpOnly SameSite=Strict cookie, login rate limit. Or OIDC. Same `Principal` interface ([ADR-0021](adr/0021-multi-user-ready-single-user-first.md)) |
+| Exposure | Compose publishes **`127.0.0.1:8765:8000`** only. Postgres and Redis are **not published** (internal network) | TLS reverse proxy; `FINBOARD_MODE=server` refuses to start without `FINBOARD_PUBLIC_URL`, or with plain http on a non-loopback host |
+| Authentication | `LocalSingleUserBackend`: every request is the single `local` user | **Built in M8** ([ADR-0041](adr/0041-server-mode-as-built.md)): `SessionBackend` with argon2id passwords, server-side sessions in Redis, an HttpOnly SameSite=Strict cookie (`__Host-` and Secure over https), sign-in lockout, sign-up closed by default. OIDC later. Same `Principal` interface ([ADR-0021](adr/0021-multi-user-ready-single-user-first.md)) |
 | Tenant isolation | user-scoped repos + composite FKs + **Postgres RLS** + a dedicated isolation test suite ([ADR-0025](adr/0025-tenant-isolation-rls.md)) | same |
-| DNS rebinding / CSRF | Host allow-list. Every mutating request needs `X-Finboard-Client` + same-origin `Origin`. No CORS; the dev proxy keeps one origin ([ADR-0015](adr/0015-dev-proxy-no-cors-csrf-header.md)) | same + cookie-bound CSRF token |
+| DNS rebinding / CSRF | Host allow-list. Every mutating request needs `X-Finboard-Client` + same-origin `Origin`. No CORS; the dev proxy keeps one origin ([ADR-0015](adr/0015-dev-proxy-no-cors-csrf-header.md)) | same + a session-bound CSRF token in `X-CSRF-Token` on every change |
 | Statement passwords | Sent only to `/unlock`. Held as `SecretStr` → **Fernet-encrypted** with the app secret → Redis `secret:<uuid>` with a 120 s TTL → worker `GETDEL`. **Never** in Postgres, job params, broker messages, blobs or logs. Redis runs without persistence ([ADR-0027](adr/0027-statement-password-handoff.md)). **Passwords are never saved**: the user types one at each import (owner decision) | same |
 | App secret | `FINBOARD_SECRET_KEY`, generated on first `finboard init` into `.env` (git-ignored) | from a secrets manager |
 | Decrypted content | In worker memory only. Blobs keep the original encrypted bytes | same |
-| Untrusted files | 20 MB / 200 pages / 60 s + hard kill. pikepdf/pdfplumber only. Blob keys are generated, never derived from file names | + per-user quotas, upload rate limits |
+| Untrusted files | 20 MB / 200 pages / 60 s + hard kill. pikepdf/pdfplumber only. Blob keys are generated, never derived from file names | + per-user storage quota (5 GB), upload and request rate limits |
 | Untrusted structured input | `yaml.safe_load` + Pydantic. No eval or pickle (Celery uses the **JSON** serializer). Regex timeout. Data-import zips validated (members, sizes, schema version) | same |
 | Data at rest | Docker volumes on the owner's disk, protected by **OS disk encryption** (BitLocker/FileVault/LUKS), as decided in OQ-15 | managed-DB encryption |
 | Logs | JSON. Ids, counts and timings only, **never** descriptions, amounts, file names or passwords (a structlog processor redacts known keys) | ship to the operator's log stack |
@@ -591,7 +591,7 @@ Design target: **hundreds of users, each with up to ~50k transactions** (≈ 25M
 | Workers | Add `parse` workers for CPU-heavy imports, independently of the API | Per-user concurrency cap (2 parse jobs) keeps one user from starving others |
 | Postgres | Every hot query is an index range scan on `(user_id, date…)`. PgBouncer in transaction mode when connection counts grow (`SET LOCAL` is compatible with it) | Hash-partition `txn` by `user_id` only if a single table passes ~100M rows; the keys already allow it |
 | Redis | Broker, idempotency keys, ephemeral secrets. Small | Disposable; no persistence needed |
-| Blobs | `BlobStore` → S3-compatible when hosted | Keys are namespaced by user |
+| Blobs | `BlobStore` → `S3BlobStore` when hosted (`FINBOARD_BLOB_BACKEND=s3`, the `s3` extra) | Keys are namespaced by user |
 
 **Performance budgets** (local, measured in CI on ubuntu): `/dashboard` p95 < 200 ms for a user with 50k txns among 100 users' data. `/transactions` page < 100 ms. Load test (`tests/load`, Locust 2): 200 concurrent virtual users on a dashboard/transactions/categorise mix, p95 < 300 ms on the reference machine. Measured in M4: `/dashboard` p95 87 ms and a `/transactions` page 20 ms for a 50k-txn user among 100 users; the Locust mix gives p95 57 ms with 3 API processes (`finboard serve --workers 3`), and 930 ms with one, which saturates at ~130 req/s ([ADR-0036](adr/0036-dashboard-as-built.md)). If dashboard SQL ever misses its budget, the first step is a Redis response cache keyed by `data_version` (already in the schema). A materialised `monthly_summary` table is the step after that.
 
@@ -636,7 +636,8 @@ The OS matrix covers what contributors run natively (parsers, frontend). The ser
 | Packaged, from a checkout | `docker compose -f deploy/compose.yaml -f deploy/compose.build.yaml up -d --build` · `bash scripts/smoke-compose.sh --e2e` | Builds `deploy/Dockerfile` instead of pulling. The smoke test runs as its own project (port 8766, own volumes) and removes it afterwards |
 | **Dev** | `docker compose -f deploy/compose.dev.yaml up -d` then `uv run finboard dev` | Postgres and Redis run in containers on loopback ports. `finboard dev` runs on the host: uvicorn `--reload`, a Celery worker with auto-restart (watchfiles), and Vite (`/api` proxied). On Windows the worker uses `--pool=solo`, because Celery prefork isn't supported there; hard time limits then apply only in containers |
 | Seed demo data | `uv run finboard demo-data` | synthetic accounts, imports and transactions mirroring `docs/handover/design/` |
-| Utilities | `finboard migrate` · `finboard create-user` (server mode) · `finboard parsers list` · `finboard export --user local` | |
+| **Server mode** | add `-f deploy/compose.server.yaml` and set `FINBOARD_PUBLIC_URL`; then `finboard create-user <name>` | Sign-in for several people behind a TLS proxy ([HOSTING.md](HOSTING.md), [ADR-0041](adr/0041-server-mode-as-built.md)) |
+| Utilities | `finboard migrate` · `finboard create-user` / `finboard set-password` (server mode) · `finboard parsers` | |
 
 Upgrades: `docker compose pull && up -d`. Before migrating an older schema, `finboard serve` writes a `pg_dump -Fc` to `FINBOARD_BACKUP_DIR` (the backups volume); a failed dump stops the migration, a missing `pg_dump` only warns ([ADR-0037](adr/0037-data-and-housekeeping-as-built.md)).
 
