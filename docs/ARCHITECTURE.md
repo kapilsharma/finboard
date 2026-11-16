@@ -576,7 +576,7 @@ Percentages are rounded once, to one decimal place (half up), in `metrics.py`: t
 | Data at rest | Docker volumes on the owner's disk, protected by **OS disk encryption** (BitLocker/FileVault/LUKS), as decided in OQ-15 | managed-DB encryption |
 | Logs | JSON. Ids, counts and timings only, **never** descriptions, amounts, file names or passwords (a structlog processor redacts known keys) | ship to the operator's log stack |
 | Outbound AI (opt-in) | Off by default; the operator makes it available, each user opts in. With Ask on, only the question, the catalog, category paths and **account aliases** go to the configured LLM. **Never** transactions, descriptions, amounts, account names, results, or raw database errors. One outbound module, tracing forced off, rows kept out of graph state, canary tests ([ADR-0030](adr/0030-assistive-ai-opt-in.md)). Category suggestions are local. Model-written SQL never runs in Postgres: only in a per-request SQLite sandbox holding the caller's rows ([ADR-0032](adr/0032-nl-analytics-langgraph.md)) | same; provider key from a secrets manager |
-| Telemetry | None. No update checks. Assets bundled. `pytest-socket` blocks network in unit tests. OTel exporter off unless configured | opt-in operator OTel |
+| Telemetry | None. No update checks. Assets bundled (`scripts/check_bundle.py`); Swagger UI, which loads from a CDN, is off in the packaged app. `pytest-socket` blocks network in unit tests. OTel exporter off unless configured | opt-in operator OTel |
 | Repo hygiene | `.gitignore`, pre-commit and CI checks against tracked PDFs, dumps and zips. Fixtures generated at test time | — |
 
 ---
@@ -632,7 +632,8 @@ The OS matrix covers what contributors run natively (parsers, frontend). The ser
 
 | Mode | Command | What happens |
 |---|---|---|
-| **User** | `docker compose -f deploy/compose.yaml up -d` (first time: `docker compose run --rm api finboard init`) | Starts db, redis, api, worker and beat. The api runs migrations on start (advisory-locked) and creates the `local` user. App at **http://127.0.0.1:8765**. Data in named volumes |
+| **User** | `docker compose -f deploy/compose.yaml up -d` (first time: `docker compose -f deploy/compose.yaml run --rm init`, which writes `deploy/.env`) | Starts db, redis, api, worker and beat. The api runs migrations on start (advisory-locked) and creates the `local` user. App at **http://127.0.0.1:8765**. Data in the named volumes `db-data` and `data` (blobs, backups). Db, redis, worker and beat are on an internal network ([ADR-0040](adr/0040-packaging-as-built.md)) |
+| Packaged, from a checkout | `docker compose -f deploy/compose.yaml -f deploy/compose.build.yaml up -d --build` · `bash scripts/smoke-compose.sh --e2e` | Builds `deploy/Dockerfile` instead of pulling. The smoke test runs as its own project (port 8766, own volumes) and removes it afterwards |
 | **Dev** | `docker compose -f deploy/compose.dev.yaml up -d` then `uv run finboard dev` | Postgres and Redis run in containers on loopback ports. `finboard dev` runs on the host: uvicorn `--reload`, a Celery worker with auto-restart (watchfiles), and Vite (`/api` proxied). On Windows the worker uses `--pool=solo`, because Celery prefork isn't supported there; hard time limits then apply only in containers |
 | Seed demo data | `uv run finboard demo-data` | synthetic accounts, imports and transactions mirroring `docs/handover/design/` |
 | Utilities | `finboard migrate` · `finboard create-user` (server mode) · `finboard parsers list` · `finboard export --user local` | |

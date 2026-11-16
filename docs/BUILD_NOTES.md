@@ -13,6 +13,7 @@ definition of done.
 | [M5 Settings and your data](#m5-settings-and-your-data) | #5 | [0037](adr/0037-data-and-housekeeping-as-built.md) |
 | [M3a Category suggestions](#m3a-category-suggestions) | #6 | [0038](adr/0038-ai-suggestions-as-built.md) |
 | [M4a Ask Finboard](#m4a-ask-finboard) | #7 | [0039](adr/0039-ask-finboard-as-built.md) |
+| [M7 Packaging](#m7-packaging) | #8 | [0040](adr/0040-packaging-as-built.md) |
 
 ---
 
@@ -203,3 +204,31 @@ Optional and off by default: the operator sets `FINBOARD_AI_ASK=gemini|ollama` (
   - the live `finboard ai eval` run (needs the owner's `FINBOARD_GEMINI_API_KEY`), which decides the "≥ 80 % spec-path accuracy" row;
   - the owner's laptop perf run for M3a;
   - the README demo GIF.
+
+---
+
+## M7 Packaging
+
+### What's built
+- **Image** (`deploy/Dockerfile`): the SPA is built with node, the Python environment with uv, and the runtime is a slim image without either. It runs as uid 10001 and includes Postgres 18's `pg_dump` for the backup before a migration. `WITH_AI=1` adds the `ai` extra and bakes the embedding model in.
+- **Stack** (`deploy/compose.yaml`): api, worker, beat, db and redis.
+  - Only the api is published, on `127.0.0.1:8765`.
+  - Db, redis, worker and beat are on an internal network with no route to the host network or the internet.
+  - The app containers have a read-only root filesystem, no capabilities and `no-new-privileges`.
+- **Setup:** `docker compose -f deploy/compose.yaml run --rm init` writes `deploy/.env` with the secret key and three database passwords. A second run changes nothing.
+- **Smoke test** (`scripts/smoke-compose.sh`, CI job `packaged`): every M7 acceptance row, as its own compose project that is removed afterwards.
+- **Happy path** (`e2e/tests/happy-path.spec.ts`): dashboard → import an encrypted statement → commit → find its transactions. It runs against the packaged stack and in the ordinary e2e job.
+- **Release workflow:** a `vX.Y.Z` tag publishes both image variants to GHCR for amd64 and arm64, with SBOM and provenance attestations, and creates the GitHub release from the changelog section.
+- **Docs:** README with install, upgrade, AI and privacy sections and the demo-data screenshots; CHANGELOG; CONTRIBUTING › Releasing.
+- **Found and fixed along the way:** Swagger UI at `/api/docs` loads its assets from a CDN, against the "no CDNs" promise. It is now off in the packaged app.
+
+### Deviations
+- **`init` is its own compose service,** not `run --rm api finboard init`. It must write a file on the host, so it runs as root with no network and hands the file to the directory's owner.
+- **One `data` volume** for blobs and backups, not two.
+- **`FINBOARD_ENV=prod`** now means something: no `/api/docs`, and `finboard serve` won't start without a secret key.
+- **Starting without `init`** fails at the database container (Postgres refuses an empty superuser password), before Finboard's own clearer message can be shown.
+- **Users clone the repository** for the `deploy/` folder.
+- **Not exercised yet:**
+  - the release workflow, which first runs on the owner's first tag;
+  - the arm64 image;
+  - Ask Finboard and suggestions end to end inside the `-ai` image. The image builds, and the baked-in model embeds with the network disabled; the features themselves were tested outside Docker in M3a and M4a.

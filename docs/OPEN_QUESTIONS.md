@@ -21,6 +21,7 @@ Revision 4 (2026-11-04: AI questions added). Each open item has a **recommended 
 | — | Async / multi-user / DB / jobs | Async; multi-user ready, single user first; PostgreSQL; Celery + Redis |
 | OQ-29 | AI in Finboard? | **Yes, optional and assistive** (2026-11-04). Finboard becomes the Python + AI portfolio project instead of a separate RAG demo. Rules stay authoritative, and the LLM never sees transaction data ([ADR-0030](adr/0030-assistive-ai-opt-in.md)) |
 | OQ-30 | Which LLM? | **Gemini Flash on the free tier** (owner checked it's free to start). Provider kept swappable (LangChain). Ollama as an optional offline fallback |
+| OQ-19 | Package/image name availability | **`ghcr.io/kapilsharma/finboard`** (2026-11-16, M7). The image lives in the owner's GHCR namespace, so the name can't clash. Nothing is published to PyPI; check that name only if that changes ([ADR-0040](adr/0040-packaging-as-built.md)) |
 
 ## Open
 
@@ -38,7 +39,6 @@ Revision 4 (2026-11-04: AI questions added). Each open item has a **recommended 
 | OQ-16 | Minimum versions | Python 3.12+ (CI 3.12 + 3.14), Node 22+ (CI 24), PostgreSQL 18, Redis 7 / Valkey 8 | M1 |
 | OQ-17 | ATM withdrawals | **Expense › Cash** | M3 |
 | OQ-18 | Default category for unmatched credits | Debits → *Uncategorized* (expense); credits → *Uncategorized income*. Both need review | M3 |
-| OQ-19 | Package/image name availability | Check before M7; fall back to `finboard-app` | M7 |
 | OQ-22 | Tenancy unit: user or household? | **User** in v1 | — |
 | OQ-23 | Login method in M8 | Own passwords (argon2id + sessions) first, OIDC later | M8 |
 | OQ-24 | Celery prefork unsupported on Windows hosts | Dev worker uses `--pool=solo` on Windows or runs in Docker | M1 |

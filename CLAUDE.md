@@ -27,6 +27,9 @@ for many users (async FastAPI, Postgres with row-level security, Celery workers)
 - Install: `cd backend && uv sync` and `cd frontend && npm ci`.
 - Run: `cd backend && uv run finboard dev` (API :8765, worker, Vite :5173). The housekeeping
   scheduler is separate: `uv run finboard beat` (one only; ADR-0037).
+- Packaged stack (what users run; ADR-0040): `deploy/Dockerfile` + `deploy/compose.yaml`.
+  `bash scripts/smoke-compose.sh --e2e` builds and tests it as its own project on port 8766.
+  A new `FINBOARD_*` setting that users need must also be passed through in `compose.yaml`.
 
 ## Definition of done
 ```
