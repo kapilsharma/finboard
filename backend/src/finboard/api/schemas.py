@@ -191,6 +191,38 @@ class MeOut(BaseModel):
     username: str
     display_name: str
     mode: str
+    csrf_token: str | None = Field(
+        default=None,
+        description="Server mode: send it back as X-CSRF-Token on requests that change something",
+    )
+
+
+Password = Annotated[SecretStr, Field(min_length=1, max_length=128)]
+
+
+class SignupIn(BaseModel):
+    username: Annotated[str, StringConstraints(strip_whitespace=True, min_length=3, max_length=32)]
+    display_name: (
+        Annotated[str, StringConstraints(strip_whitespace=True, max_length=120)] | None
+    ) = None
+    password: Password
+
+
+class LoginIn(BaseModel):
+    username: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=64)]
+    password: Password
+
+
+class PasswordChangeIn(BaseModel):
+    current_password: Password
+    new_password: Password
+
+
+class SessionOut(BaseModel):
+    id: uuid.UUID
+    username: str
+    display_name: str
+    csrf_token: str
 
 
 class MetricDefinitionOut(BaseModel):
@@ -203,6 +235,9 @@ class MetaOut(BaseModel):
     version: str
     api_version: str
     mode: str
+    signup_open: bool = Field(
+        default=False, description="Server mode: whether anyone may create an account"
+    )
     metric_definitions: dict[str, MetricDefinitionOut] = Field(
         description="The metric spec (ARCHITECTURE §12); the UI shows these as tooltips"
     )

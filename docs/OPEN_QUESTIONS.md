@@ -22,6 +22,7 @@ Revision 4 (2026-11-04: AI questions added). Each open item has a **recommended 
 | OQ-29 | AI in Finboard? | **Yes, optional and assistive** (2026-11-04). Finboard becomes the Python + AI portfolio project instead of a separate RAG demo. Rules stay authoritative, and the LLM never sees transaction data ([ADR-0030](adr/0030-assistive-ai-opt-in.md)) |
 | OQ-30 | Which LLM? | **Gemini Flash on the free tier** (owner checked it's free to start). Provider kept swappable (LangChain). Ollama as an optional offline fallback |
 | OQ-19 | Package/image name availability | **`ghcr.io/kapilsharma/finboard`** (2026-11-16, M7). The image lives in the owner's GHCR namespace, so the name can't clash. Nothing is published to PyPI; check that name only if that changes ([ADR-0040](adr/0040-packaging-as-built.md)) |
+| OQ-23 | Login method in M8 | **Own passwords** (argon2id) with server-side sessions in Redis (2026-11-16, M8). Sign-up closed by default. OIDC later ([ADR-0041](adr/0041-server-mode-as-built.md)) |
 
 ## Open
 
@@ -40,7 +41,6 @@ Revision 4 (2026-11-04: AI questions added). Each open item has a **recommended 
 | OQ-17 | ATM withdrawals | **Expense › Cash** | M3 |
 | OQ-18 | Default category for unmatched credits | Debits → *Uncategorized* (expense); credits → *Uncategorized income*. Both need review | M3 |
 | OQ-22 | Tenancy unit: user or household? | **User** in v1 | — |
-| OQ-23 | Login method in M8 | Own passwords (argon2id + sessions) first, OIDC later | M8 |
 | OQ-24 | Celery prefork unsupported on Windows hosts | Dev worker uses `--pool=solo` on Windows or runs in Docker | M1 |
 | OQ-31 | Vector store | **pgvector in the existing Postgres** (`pgvector/pgvector:pg18`): one DB, RLS applies, no extra service on the laptop ([ADR-0031](adr/0031-pgvector-embeddings.md)). Alternatives were ChromaDB, FAISS and Qdrant | M3a |
 | OQ-32 | Embedding model | **`all-MiniLM-L6-v2` via fastembed** (384-dim, ~90 MB, CPU/ONNX). Compare with `bge-small-en-v1.5` on the suggestion eval before M3a closes; Indian merchant strings may favour one | M3a |

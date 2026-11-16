@@ -18,6 +18,7 @@ const external = process.env.E2E_BASE_URL
 export default defineConfig({
   testDir: './tests',
   testMatch: external ? 'happy-path.spec.ts' : undefined,
+  testIgnore: 'server-mode.spec.ts', // needs server mode: playwright.server.config.ts
   timeout: 90_000,
   expect: { timeout: 30_000 },
   fullyParallel: false,

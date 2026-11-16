@@ -1,27 +1,52 @@
-"""Load test (ARCHITECTURE §14, ROADMAP M4): a dashboard / transactions / categorise mix.
-Budget: 200 virtual users, p95 < 300 ms on the reference machine. Run by hand, not in CI:
+"""Load test (ARCHITECTURE §14): a dashboard / transactions / categorise mix. Run by hand, not
+in CI. Budget: p95 < 300 ms on the reference machine.
+
+Local mode (ROADMAP M4, 200 virtual users; every one is the single local user):
 
     cd e2e && E2E_PORT=8799 python3 stack.py            # app + worker on finboard_test, demo data
     cd backend && uv run --group load locust -f tests/load/locustfile.py \\
         --host http://127.0.0.1:8799 --users 200 --spawn-rate 20 --run-time 2m --headless
 
-Local mode has one user, so every virtual user is the local user: this measures the API and
-the database under concurrency, not tenancy. Writes only recategorise demo rows by hand.
+Server mode (ROADMAP M8, 300 signed-in users, each with their own data and session):
+
+    cd e2e && E2E_PORT=8797 E2E_API_WORKERS=3 FINBOARD_MODE=server \\
+        FINBOARD_PUBLIC_URL=http://127.0.0.1:8797 python3 stack.py
+    cd backend && uv run python tests/load/seed_users.py 300
+    cd backend && LOAD_SERVER_USERS=300 uv run --group load locust -f tests/load/locustfile.py \\
+        --host http://127.0.0.1:8797 --users 300 --spawn-rate 10 --run-time 2m --headless
+
+Writes only recategorise demo rows by hand.
 """
 
+import itertools
+import os
 import random
 
 from locust import HttpUser, between, task
 
 API = "/api/v1"
-WRITE = {"X-Finboard-Client": "1"}
 MONTHS = ["2026-07", "2026-08", "2026-09"]
+# Server mode: how many seeded `load-NNNN` users to sign in as (0 = local mode, no sign-in).
+SERVER_USERS = int(os.environ.get("LOAD_SERVER_USERS", "0"))
+PASSWORD = os.environ.get("LOAD_PASSWORD", "load test passphrase")
+_numbers = itertools.count(1)
 
 
 class FinboardUser(HttpUser):
     wait_time = between(0.5, 2.0)
 
     def on_start(self) -> None:
+        self.write = {"X-Finboard-Client": "1"}
+        if SERVER_USERS:
+            number = (next(_numbers) - 1) % SERVER_USERS + 1
+            response = self.client.post(
+                f"{API}/auth/login",
+                json={"username": f"load-{number:04d}", "password": PASSWORD},
+                headers=self.write,
+                name="/auth/login",
+            )
+            response.raise_for_status()  # the session cookie stays in this user's client
+            self.write["X-CSRF-Token"] = response.json()["csrf_token"]
         self.categories = [
             c["id"]
             for c in self.client.get(f"{API}/categories").json()["items"]
@@ -64,6 +89,6 @@ class FinboardUser(HttpUser):
             self.client.patch(
                 f"{API}/transactions/{row['id']}",
                 json={"category_id": random.choice(self.categories)},  # noqa: S311
-                headers=WRITE,
+                headers=self.write,
                 name="/transactions/{id}",
             )

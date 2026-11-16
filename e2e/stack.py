@@ -17,6 +17,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 BACKEND = ROOT / "backend"
 PORT = os.environ.get("E2E_PORT", "8799")
+# API processes: 1 for the tests; the load test wants 3 (ARCHITECTURE §14).
+API_WORKERS = os.environ.get("E2E_API_WORKERS", "1")
 DB = "postgresql+asyncpg://{role}:{role}_dev@127.0.0.1:55432/finboard_test"
 
 ENV = {
@@ -80,7 +82,9 @@ def main() -> None:
     subprocess.run(uv("python", "-c", DEMO), env=ENV, cwd=BACKEND, check=True)  # noqa: S603
     procs = [
         subprocess.Popen(  # noqa: S603
-            uv("finboard", "serve", "--no-migrate", "--port", PORT), env=ENV, cwd=BACKEND
+            uv("finboard", "serve", "--no-migrate", "--port", PORT, "--workers", API_WORKERS),
+            env=ENV,
+            cwd=BACKEND,
         ),
         subprocess.Popen(uv("finboard", "worker", "--concurrency", "1"), env=ENV, cwd=BACKEND),  # noqa: S603
     ]

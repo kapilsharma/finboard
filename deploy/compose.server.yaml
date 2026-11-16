@@ -1,0 +1,37 @@
+# Server mode: several people, each signing in (ROADMAP M8, ADR-0041, docs/HOSTING.md).
+# Add this file to the usual commands:
+#
+#   docker compose -f deploy/compose.yaml -f deploy/compose.server.yaml up -d
+#   docker compose -f deploy/compose.yaml -f deploy/compose.server.yaml exec api finboard create-user alice
+#
+# Set FINBOARD_PUBLIC_URL in deploy/.env to the https address people will open. The app is
+# still published on 127.0.0.1 only: a TLS reverse proxy on this machine sits in front of it.
+x-server-env: &server-env
+  FINBOARD_MODE: server
+  FINBOARD_PUBLIC_URL: ${FINBOARD_PUBLIC_URL:?set FINBOARD_PUBLIC_URL in deploy/.env, e.g. https://finboard.example.com}
+  FINBOARD_SIGNUP: ${FINBOARD_SIGNUP:-closed}
+  FINBOARD_STORAGE_QUOTA_BYTES: ${FINBOARD_STORAGE_QUOTA_BYTES:-5368709120}
+  FINBOARD_RATE_LIMIT_PER_MINUTE: ${FINBOARD_RATE_LIMIT_PER_MINUTE:-600}
+  # The api's port is bound to loopback, so the only thing that can reach it is a proxy on
+  # this machine. Its requests arrive from Docker's gateway address, hence `*`.
+  FINBOARD_FORWARDED_ALLOW_IPS: ${FINBOARD_FORWARDED_ALLOW_IPS:-*}
+  # Each API process keeps its own database connections: processes × (pool + overflow), plus
+  # the workers, must stay under Postgres's max_connections (100).
+  FINBOARD_DB_POOL_SIZE: ${FINBOARD_DB_POOL_SIZE:-8}
+  FINBOARD_DB_MAX_OVERFLOW: ${FINBOARD_DB_MAX_OVERFLOW:-4}
+  # Statements in an S3-compatible store instead of the `data` volume (needs the -s3 image).
+  FINBOARD_BLOB_BACKEND: ${FINBOARD_BLOB_BACKEND:-local}
+  FINBOARD_S3_BUCKET: ${FINBOARD_S3_BUCKET:-}
+  FINBOARD_S3_PREFIX: ${FINBOARD_S3_PREFIX:-}
+  FINBOARD_S3_ENDPOINT_URL: ${FINBOARD_S3_ENDPOINT_URL:-}
+  FINBOARD_S3_REGION: ${FINBOARD_S3_REGION:-}
+  FINBOARD_S3_ACCESS_KEY_ID: ${FINBOARD_S3_ACCESS_KEY_ID:-}
+  FINBOARD_S3_SECRET_ACCESS_KEY: ${FINBOARD_S3_SECRET_ACCESS_KEY:-}
+
+services:
+  api:
+    environment: *server-env
+  worker:
+    environment: *server-env
+  beat:
+    environment: *server-env

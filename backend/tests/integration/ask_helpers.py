@@ -15,9 +15,8 @@ from fastapi import FastAPI
 from finboard.ai.llm import LlmReply, LlmRequest, render
 from finboard.auth import Principal
 from finboard.core.config import Settings
-from finboard.main import create_app
 
-from .conftest import HeaderAuthBackend, RecordingJobQueue
+from .conftest import RecordingJobQueue, api_client, running_app
 
 API = "/api/v1"
 
@@ -63,19 +62,15 @@ async def ask_app(
     llm: ScriptedLlm,
 ) -> AsyncIterator[FastAPI]:
     ai = settings.model_copy(update={"ai_ask": "gemini", "ai_ask_sql": True})
-    backend = HeaderAuthBackend({"alice": alice, "bob": bob}, default="alice")
-    application = create_app(ai, auth_backend=backend, job_queue=job_queue, llm_factory=lambda: llm)
-    async with application.router.lifespan_context(application):
+    async with running_app(
+        ai, {"alice": alice, "bob": bob}, job_queue, llm_factory=lambda: llm
+    ) as application:
         yield application
 
 
 @pytest.fixture
 async def ask_client(ask_app: FastAPI) -> AsyncIterator[httpx.AsyncClient]:
-    async with httpx.AsyncClient(
-        transport=httpx.ASGITransport(app=ask_app),
-        base_url="http://127.0.0.1",
-        headers={"X-Finboard-Client": "1"},
-    ) as c:
+    async with api_client(ask_app) as c:
         for user in ("alice", "bob"):
             on = await c.patch(
                 f"{API}/ai/settings", json={"ask": True}, headers={"X-Test-User": user}

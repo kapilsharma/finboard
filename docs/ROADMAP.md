@@ -18,7 +18,7 @@ flowchart LR
   M6 -.remaining adapters parked.-> M7
   M3 --> M3a[M3a AI suggestions] --> M7
   M4 --> M4a[M4a Ask Finboard] --> M7
-  M7 -.post-v1.-> M8[M8 Multi-user login]
+  M7 --> M8[M8 Multi-user login]
 ```
 
 ---
@@ -202,5 +202,19 @@ flowchart LR
 | Image runs as non-root and contains no PDFs, dumps or external URLs in the bundle | `smoke-compose.sh`: uid of api, worker, beat; file scan of the image; `scripts/check_bundle.py`; `/api/docs` is a 404. Unit: `tests/unit/test_cli.py` |
 | Playwright happy path passes against the packaged stack | `e2e/tests/happy-path.spec.ts` via `smoke-compose.sh --e2e` (`E2E_BASE_URL`) |
 
-## M8 — Multi-user login (post-v1, outline)
-**Scope:** `SessionBackend` (argon2id, Redis sessions, HttpOnly cookies, CSRF token), sign-up/login/logout UI in `AuthGate`, `FINBOARD_MODE=server`, per-user quotas and rate limits, `S3BlobStore`, hosting guide (TLS proxy). **Acceptance:** the tenancy suite passes unchanged with real sessions. Load test with 300 users.
+## M8 — Multi-user login ✅ (2026-11-16; load budget not met on the owner's laptop)
+*Done: `FINBOARD_MODE=server` with `SessionBackend` (argon2id, Redis sessions, HttpOnly SameSite=Strict cookie, session CSRF token), sign-up / sign-in / sign-out / change password (API + UI), `finboard create-user` and `set-password`, per-user rate limits and storage quota, `S3BlobStore`, `deploy/compose.server.yaml` and [HOSTING.md](HOSTING.md). Local mode is unchanged and stays the default. Deviations ([ADR-0041](adr/0041-server-mode-as-built.md)):*
+- *Sign-up is closed by default; the operator opens it with `FINBOARD_SIGNUP=open`.*
+- *The password hash is a column on `app_user`, not a separate table.*
+- *No email, so no password reset by email (`finboard set-password`), and no admin UI, two-factor sign-in or OIDC.*
+- *Load: 300 users run with no errors, but the owner's laptop saturates near 160 requests/s, so p95 was 1.5 s, not the M4 budget of 300 ms. At 100 users p95 was 140 ms. The same load without sessions is no faster.*
+
+**Scope:** `SessionBackend` (argon2id, Redis sessions, HttpOnly cookies, CSRF token), sign-up/login/logout UI in `AuthGate`, `FINBOARD_MODE=server`, per-user quotas and rate limits, `S3BlobStore`, hosting guide (TLS proxy).
+
+| Acceptance criterion | Proven by |
+|---|---|
+| The tenancy suite passes unchanged with real sessions | `FINBOARD_TEST_AUTH=session pytest tests/integration/tenancy` (CI step in `backend-integration`; 47 tests, same files) |
+| Load test with 300 users | `backend/tests/load/locustfile.py` + `seed_users.py` (manual run: 20,152 requests, 0 failures, p95 1.5 s with 6 API processes; numbers in ADR-0041) |
+| Sign-up, sign-in, CSRF token, lockout, password change, limits, quota | `tests/integration/test_auth.py`, `tests/unit/test_auth_units.py` |
+| `S3BlobStore` behaves like the local store | `tests/integration/test_blob_stores.py` (moto) |
+| Sign-in UI in a real browser; two people see only their own data; axe in light and dark; 400 px | Playwright `e2e/tests/server-mode.spec.ts`; Vitest `SignIn.test.tsx` |

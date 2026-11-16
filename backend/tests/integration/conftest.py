@@ -1,8 +1,11 @@
 import asyncio
 import importlib.util
+import os
 import uuid
 from collections.abc import AsyncIterator, Mapping
+from contextlib import asynccontextmanager
 from pathlib import Path
+from typing import Any
 
 import httpx
 import pytest
@@ -15,8 +18,8 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 
-from finboard.auth import Principal
-from finboard.core.config import Settings, get_settings
+from finboard.auth import Principal, passwords
+from finboard.core.config import Mode, Settings, get_settings
 from finboard.db import migrate
 from finboard.db.engine import create_engine, create_sessionmaker
 from finboard.db.uow import unit_of_work
@@ -46,8 +49,109 @@ class HeaderAuthBackend:
         self.users = users
         self.default = default
 
-    async def authenticate(self, headers: Mapping[str, str]) -> Principal | None:
+    async def authenticate(
+        self, headers: Mapping[str, str], method: str = "GET"
+    ) -> Principal | None:
         return self.users.get(headers.get("x-test-user", self.default))
+
+
+# FINBOARD_TEST_AUTH=session runs the same tests against the real thing (ROADMAP M8): the app
+# starts in server mode with `SessionBackend`, alice and bob sign in through /auth/login, and
+# the client turns a test's `X-Test-User: bob` into bob's session cookie and CSRF token. The
+# tests themselves don't change; CI runs the tenancy suite both ways.
+SESSION_AUTH = os.environ.get("FINBOARD_TEST_AUTH") == "session"
+TEST_PASSWORD = "correct horse battery staple"
+_TEST_PASSWORD_HASH = passwords.hash_password(TEST_PASSWORD) if SESSION_AUTH else ""
+BASE_URL = "http://127.0.0.1"
+CLIENT_HEADERS = {"X-Finboard-Client": "1"}
+
+
+class SessionAuthTransport(httpx.AsyncBaseTransport):
+    """Sends each request as the user its `X-Test-User` header names, with that user's real
+    session. A name nobody signed in as goes out with no session at all."""
+
+    def __init__(
+        self, inner: httpx.AsyncBaseTransport, sessions: Mapping[str, tuple[str, str]], default: str
+    ) -> None:
+        self.inner = inner
+        self.sessions = sessions
+        self.default = default
+
+    @property
+    def app(self) -> Any:
+        return self.inner.app  # type: ignore[attr-defined]  # some tests reach the app this way
+
+    async def handle_async_request(self, request: httpx.Request) -> httpx.Response:
+        who = request.headers.get("x-test-user", self.default)
+        if "x-test-user" in request.headers:
+            del request.headers["x-test-user"]
+        if who in self.sessions:
+            cookie, csrf = self.sessions[who]
+            request.headers["cookie"] = cookie
+            request.headers["x-csrf-token"] = csrf
+        return await self.inner.handle_async_request(request)
+
+
+async def _sign_in(
+    application: FastAPI, users: Mapping[str, Principal]
+) -> dict[str, tuple[str, str]]:
+    async with unit_of_work(application.state.sessionmaker) as uow:
+        for principal in users.values():
+            user = await uow.users.get(principal.user_id)
+            assert user is not None
+            user.password_hash = _TEST_PASSWORD_HASH
+        await uow.commit()
+    sessions: dict[str, tuple[str, str]] = {}
+    for name in users:
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=application),
+            base_url=BASE_URL,
+            headers=CLIENT_HEADERS,
+        ) as c:
+            response = await c.post(
+                "/api/v1/auth/login", json={"username": name, "password": TEST_PASSWORD}
+            )
+            assert response.status_code == 200, response.text
+            cookie = "; ".join(f"{k}={v}" for k, v in response.cookies.items())
+            sessions[name] = (cookie, response.json()["csrf_token"])
+    return sessions
+
+
+@asynccontextmanager
+async def running_app(
+    settings: Settings,
+    users: Mapping[str, Principal],
+    job_queue: "RecordingJobQueue",
+    **kwargs: Any,
+) -> AsyncIterator[FastAPI]:
+    """The app under test, started. Header-stub auth by default; real sessions with
+    FINBOARD_TEST_AUTH=session."""
+    if not SESSION_AUTH:
+        backend = HeaderAuthBackend(users, default="alice")
+        application = create_app(settings, auth_backend=backend, job_queue=job_queue, **kwargs)
+        async with application.router.lifespan_context(application):
+            yield application
+        return
+    server = settings.model_copy(
+        update={"mode": Mode.SERVER, "public_url": BASE_URL, "rate_limit_per_minute": 0}
+    )
+    application = create_app(server, job_queue=job_queue, **kwargs)
+    async with application.router.lifespan_context(application):
+        application.state.test_sessions = await _sign_in(application, users)
+        try:
+            yield application
+        finally:
+            for principal in users.values():
+                await application.state.sessions.delete_all(principal.user_id)
+
+
+def api_client(application: FastAPI) -> httpx.AsyncClient:
+    transport: httpx.AsyncBaseTransport = httpx.ASGITransport(app=application)
+    if SESSION_AUTH:
+        transport = SessionAuthTransport(
+            transport, application.state.test_sessions, default="alice"
+        )
+    return httpx.AsyncClient(transport=transport, base_url=BASE_URL, headers=CLIENT_HEADERS)
 
 
 class RecordingJobQueue:
@@ -169,17 +273,11 @@ def job_queue(monkeypatch: pytest.MonkeyPatch) -> RecordingJobQueue:
 async def app(
     settings: Settings, alice: Principal, bob: Principal, job_queue: RecordingJobQueue
 ) -> AsyncIterator[FastAPI]:
-    backend = HeaderAuthBackend({"alice": alice, "bob": bob}, default="alice")
-    application = create_app(settings, auth_backend=backend, job_queue=job_queue)
-    async with application.router.lifespan_context(application):
+    async with running_app(settings, {"alice": alice, "bob": bob}, job_queue) as application:
         yield application
 
 
 @pytest.fixture
 async def client(app: FastAPI) -> AsyncIterator[httpx.AsyncClient]:
-    async with httpx.AsyncClient(
-        transport=httpx.ASGITransport(app=app),
-        base_url="http://127.0.0.1",
-        headers={"X-Finboard-Client": "1"},
-    ) as c:
+    async with api_client(app) as c:
         yield c

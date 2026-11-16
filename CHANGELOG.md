@@ -25,6 +25,9 @@ Everything below is new: there has been no release yet.
 - **Your data.** Export everything as one zip, import it into an empty Finboard, export
   transactions as CSV, delete everything. A database backup is taken before every upgrade
   that changes the schema.
+- **Several people on one server (optional).** Server mode adds sign-in with a username and
+  password, sign-up the operator can open, per-person limits, and S3-compatible storage for
+  statements. Local mode, with no sign-in, stays the default. See `docs/HOSTING.md`.
 - **Optional AI, off by default.** Category suggestions computed on your machine, and Ask
   Finboard, which answers questions as charts without sending transaction data to the model.
   Both need the `-ai` image.

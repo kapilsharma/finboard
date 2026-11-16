@@ -21,6 +21,7 @@ dependencies = [
     "python-multipart>=0.0.33",
     "regex>=2025.11",
     "pyyaml>=6.0.2",
+    "argon2-cffi>=23.1",
 ]
 
 [project.scripts]
@@ -45,6 +46,9 @@ ai = [
     "langgraph>=0.4",
     "sqlglot>=26",
 ]
+s3 = [
+    "boto3>=1.35",
+]
 
 [dependency-groups]
 dev = [
@@ -60,6 +64,8 @@ dev = [
     "types-reportlab>=5.0.0.20261008",
     "types-pyyaml>=6.0.12.20261103",
     "types-regex>=2026.9.29.20261030",
+    "moto[s3]>=5",
+    "boto3-stubs[s3]>=1.44.3",
 ]
 # Manual load test (tests/load): `uv run --group load locust ...`. Not installed by default.
 load = ["locust>=2.32"]

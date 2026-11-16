@@ -61,6 +61,87 @@ export interface paths {
     patch?: never
     trace?: never
   }
+  '/api/v1/auth/signup': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    put?: never
+    /**
+     * Signup
+     * @description Create an account and sign in. 403 `signup_closed` unless the operator opened sign-up.
+     */
+    post: operations['signup_api_v1_auth_signup_post']
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/api/v1/auth/login': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    put?: never
+    /**
+     * Login
+     * @description Sign in. The session id arrives as an HttpOnly cookie; the CSRF token in the body goes
+     *     back in `X-CSRF-Token` on every request that changes something.
+     */
+    post: operations['login_api_v1_auth_login_post']
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/api/v1/auth/logout': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    put?: never
+    /**
+     * Logout
+     * @description End this session. Works without a valid session too, so a stale tab can sign out.
+     */
+    post: operations['logout_api_v1_auth_logout_post']
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/api/v1/auth/password': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    put?: never
+    /**
+     * Change Password
+     * @description Change your password. Your other sessions are signed out; this one stays.
+     */
+    post: operations['change_password_api_v1_auth_password_post']
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
   '/api/v1/me': {
     parameters: {
       query?: never
@@ -68,7 +149,10 @@ export interface paths {
       path?: never
       cookie?: never
     }
-    /** Me */
+    /**
+     * Me
+     * @description Who is signed in. 401 `unauthenticated` in server mode when nobody is.
+     */
     get: operations['me_api_v1_me_get']
     put?: never
     post?: never
@@ -1931,6 +2015,16 @@ export interface components {
       /** Over Count */
       over_count: number
     }
+    /** LoginIn */
+    LoginIn: {
+      /** Username */
+      username: string
+      /**
+       * Password
+       * Format: password
+       */
+      password: string
+    }
     /**
      * MatchKind
      * @enum {string}
@@ -1949,6 +2043,11 @@ export interface components {
       display_name: string
       /** Mode */
       mode: string
+      /**
+       * Csrf Token
+       * @description Server mode: send it back as X-CSRF-Token on requests that change something
+       */
+      csrf_token?: string | null
     }
     /** MetaOut */
     MetaOut: {
@@ -1958,6 +2057,12 @@ export interface components {
       api_version: string
       /** Mode */
       mode: string
+      /**
+       * Signup Open
+       * @description Server mode: whether anyone may create an account
+       * @default false
+       */
+      signup_open: boolean
       /**
        * Metric Definitions
        * @description The metric spec (ARCHITECTURE §12); the UI shows these as tooltips
@@ -2075,6 +2180,19 @@ export interface components {
       options?: {
         [key: string]: unknown
       } | null
+    }
+    /** PasswordChangeIn */
+    PasswordChangeIn: {
+      /**
+       * Current Password
+       * Format: password
+       */
+      current_password: string
+      /**
+       * New Password
+       * Format: password
+       */
+      new_password: string
     }
     /** Period */
     Period: {
@@ -2364,6 +2482,20 @@ export interface components {
       /** Enabled */
       enabled?: boolean | null
     }
+    /** SessionOut */
+    SessionOut: {
+      /**
+       * Id
+       * Format: uuid
+       */
+      id: string
+      /** Username */
+      username: string
+      /** Display Name */
+      display_name: string
+      /** Csrf Token */
+      csrf_token: string
+    }
     /** ShadowOut */
     ShadowOut: {
       /**
@@ -2375,6 +2507,18 @@ export interface components {
       pattern: string
       /** Count */
       count: number
+    }
+    /** SignupIn */
+    SignupIn: {
+      /** Username */
+      username: string
+      /** Display Name */
+      display_name?: string | null
+      /**
+       * Password
+       * Format: password
+       */
+      password: string
     }
     /** StagedRowOut */
     StagedRowOut: {
@@ -2812,6 +2956,121 @@ export interface operations {
         }
         content: {
           'application/json': components['schemas']['MetaOut']
+        }
+      }
+    }
+  }
+  signup_api_v1_auth_signup_post: {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['SignupIn']
+      }
+    }
+    responses: {
+      /** @description Successful Response */
+      201: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['SessionOut']
+        }
+      }
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['HTTPValidationError']
+        }
+      }
+    }
+  }
+  login_api_v1_auth_login_post: {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['LoginIn']
+      }
+    }
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['SessionOut']
+        }
+      }
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['HTTPValidationError']
+        }
+      }
+    }
+  }
+  logout_api_v1_auth_logout_post: {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      /** @description Successful Response */
+      204: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+    }
+  }
+  change_password_api_v1_auth_password_post: {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['PasswordChangeIn']
+      }
+    }
+    responses: {
+      /** @description Successful Response */
+      204: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['HTTPValidationError']
         }
       }
     }

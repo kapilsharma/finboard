@@ -53,6 +53,8 @@ class AppUser(UUIDPrimaryKey, Timestamps, Base):
     username: Mapped[str] = mapped_column(String(64), unique=True)
     email: Mapped[str | None] = mapped_column(CITEXT, unique=True)
     display_name: Mapped[str] = mapped_column(String(120))
+    # argon2id (server mode, ADR-0041). NULL: this user can't sign in with a password.
+    password_hash: Mapped[str | None] = mapped_column(String(255))
     is_active: Mapped[bool] = mapped_column(server_default=text("true"))
     # Bumped on every write to the user's financial data; used for HTTP caching (ETag).
     data_version: Mapped[int] = mapped_column(BigInteger, server_default=text("0"))

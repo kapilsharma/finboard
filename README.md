@@ -1,5 +1,17 @@
 # Finboard
 
+> ### How this was built
+> The code was written by AI (Earlier Claude Fable, later by Opus and Sonnet) working from my instructions. 
+> 
+> My part:
+> - The requirements and product decisions
+> - Reviewing and approving the architecture ([ADRs](docs/adr/)),
+> - Setting the acceptance criteria in the [roadmap](docs/ROADMAP.md),
+> - The privacy and testing rules the code must follow,
+> - Checking the result on my own real bank statements.
+> 
+> It is also an experiment in how far an AI coding agent gets with minimal hand-holding.
+
 A private personal-finance app. Import your bank statements (password-protected PDFs), let
 **rules you control** categorise every transaction, and see where your money goes:
 income, spending, savings rate, monthly limits and per-account totals.
@@ -42,8 +54,10 @@ Open **http://127.0.0.1:8765**.
   `docker compose -f deploy/compose.yaml exec api finboard demo-data`.
   Settings › Data › Delete all removes it again.
 
-Finboard has no login: anyone who can use your computer's browser can open it. Use OS disk
-encryption (BitLocker, FileVault, LUKS) to protect the data at rest.
+Run this way, Finboard has no login: anyone who can use your computer's browser can open it.
+Use OS disk encryption (BitLocker, FileVault, LUKS) to protect the data at rest. To share one
+Finboard between several people, each with their own sign-in, see
+[Hosting for several people](docs/HOSTING.md).
 
 ### Upgrade
 
@@ -70,6 +84,21 @@ Finboard). That file holds your finances in plain form: store it somewhere encry
 | `FINBOARD_IMAGE` | `ghcr.io/kapilsharma/finboard:latest` | Image to run; pin a version like `:1.0.0` if you prefer |
 | `FINBOARD_API_WORKERS` | `2` | API processes |
 | `FINBOARD_WORKER_CONCURRENCY` | `2` | Statements parsed at the same time |
+
+## Several people on one server (optional)
+
+**Server mode** adds sign-in: each person has a username and password and sees only their own
+data. It needs a domain name and a TLS reverse proxy, and accounts are created from the
+command line unless you open sign-up. Everything is in [docs/HOSTING.md](docs/HOSTING.md).
+
+To try it on your own machine first, add to `deploy/.env`:
+
+```sh
+FINBOARD_PUBLIC_URL=http://127.0.0.1:8765
+FINBOARD_SIGNUP=open
+```
+
+and start with `docker compose -f deploy/compose.yaml -f deploy/compose.server.yaml up -d`.
 
 ## AI features (optional, off by default)
 

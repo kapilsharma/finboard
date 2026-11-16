@@ -17,14 +17,16 @@ from finboard.api.errors import install_error_handlers
 from finboard.api.middleware import RequestContextMiddleware, SecurityMiddleware
 from finboard.api.routers import api_router
 from finboard.auth import AuthBackend, LocalSingleUserBackend
-from finboard.core.config import Mode, Settings, get_settings
+from finboard.auth.sessions import SessionBackend, SessionStore, cookie_name
+from finboard.core.config import Settings, get_settings
 from finboard.core.logging import configure_logging
 from finboard.db.engine import create_engine, create_sessionmaker
 from finboard.parsers.registry import default_registry
 from finboard.services.ask import LlmFactory, default_llm_factory
 from finboard.services.jobs import JobQueue
 from finboard.services.users import ensure_local_user
-from finboard.storage.blob import LocalFsBlobStore
+from finboard.storage.factory import build_blob_store
+from finboard.storage.ratelimit import RateLimiter
 from finboard.storage.secrets import RedisSecretStore
 
 PACKAGED_STATIC = Path(__file__).parent / "web" / "static"
@@ -52,11 +54,8 @@ def create_app(
 ) -> FastAPI:
     settings = settings or get_settings()
     llm_factory = llm_factory or default_llm_factory(settings)
-    if settings.mode is Mode.SERVER:
-        raise RuntimeError(
-            "FINBOARD_MODE=server needs a real authentication backend, which doesn't exist yet "
-            "(planned for M8, see docs/adr/0021). Use FINBOARD_MODE=local."
-        )
+    if settings.is_server and (reason := settings.server_mode_problem()):
+        raise RuntimeError(reason)
     configure_logging(settings.log_level, json=settings.log_json)
     # Starlette spools uploads over 1 MB to a temporary file on disk. A statement may be
     # unencrypted, so keep uploads (capped by max_upload_bytes) in memory instead.
@@ -70,12 +69,28 @@ def create_app(
         app.state.engine = engine
         app.state.sessionmaker = sessionmaker
         app.state.redis = redis
-        app.state.blobs = LocalFsBlobStore(settings.blob_dir)
+        app.state.blobs = build_blob_store(settings)
+        app.state.limiter = RateLimiter(redis)
+        # Server mode: sessions in Redis (ADR-0041). Local mode has no sign-in.
+        app.state.sessions = (
+            SessionStore(
+                redis, idle_days=settings.session_idle_days, max_days=settings.session_max_days
+            )
+            if settings.is_server
+            else None
+        )
         secret = settings.secret_key.get_secret_value() if settings.secret_key else None
         app.state.secrets = RedisSecretStore(redis, secret) if secret else None
         app.state.registry = default_registry(tuple(settings.extra_parsers))
         if app.state.auth_backend is None:
-            app.state.auth_backend = LocalSingleUserBackend(await ensure_local_user(sessionmaker))
+            if app.state.sessions is not None:
+                app.state.auth_backend = SessionBackend(
+                    app.state.sessions, cookie=cookie_name(secure=settings.cookie_secure)
+                )
+            else:
+                app.state.auth_backend = LocalSingleUserBackend(
+                    await ensure_local_user(sessionmaker)
+                )
         if app.state.job_queue is None:
             from finboard.jobs.celery_app import celery_app
             from finboard.jobs.queue import CeleryJobQueue
@@ -110,6 +125,6 @@ def create_app(
         app.mount("/", SPAStaticFiles(directory=static_dir, html=True), name="spa")
 
     # Added last = runs first: request context wraps everything, including rejections.
-    app.add_middleware(SecurityMiddleware, allowed_hosts=settings.allowed_hosts)
+    app.add_middleware(SecurityMiddleware, allowed_hosts=settings.effective_allowed_hosts)
     app.add_middleware(RequestContextMiddleware)
     return app

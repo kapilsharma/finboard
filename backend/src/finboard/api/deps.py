@@ -37,10 +37,16 @@ def get_settings(request: Request) -> Settings:
 
 async def get_principal(request: Request) -> Principal:
     backend: AuthBackend = request.app.state.auth_backend
-    principal = await backend.authenticate(request.headers)
+    principal = await backend.authenticate(request.headers, request.method)
     if principal is None:
         raise Unauthenticated()
     structlog.contextvars.bind_contextvars(user_id=str(principal.user_id))
+    settings: Settings = request.app.state.settings
+    if settings.is_server:
+        # One user can't crowd out the others (ADR-0041).
+        await request.app.state.limiter.hit(
+            f"req:{principal.user_id}", limit=settings.rate_limit_per_minute, window=60
+        )
     return principal
 
 
@@ -91,6 +97,7 @@ def get_import_service(
         queue=queue,
         registry=state.registry,
         limits=ImportLimits.from_settings(state.settings),
+        limiter=state.limiter,
         secrets=state.secrets,
         embed_after_commit=AiConfig.from_settings(state.settings).uses_embeddings,
     )

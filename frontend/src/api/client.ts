@@ -30,6 +30,14 @@ export class ApiError extends Error {
   }
 }
 
+// Server mode: the session's CSRF token, learned from /me or from signing in. It lives in
+// memory only; a reload asks /me again. Local mode has none.
+let csrfToken: string | null = null
+
+export function setCsrfToken(token: string | null | undefined) {
+  csrfToken = token ?? null
+}
+
 export async function api<T>(
   path: string,
   {
@@ -46,7 +54,10 @@ export async function api<T>(
   } = {},
 ): Promise<T> {
   const headers: Record<string, string> = { Accept: 'application/json', ...extraHeaders }
-  if (!SAFE_METHODS.has(method)) headers['X-Finboard-Client'] = '1' // ADR-0015
+  if (!SAFE_METHODS.has(method)) {
+    headers['X-Finboard-Client'] = '1' // ADR-0015
+    if (csrfToken) headers['X-CSRF-Token'] = csrfToken // ADR-0041
+  }
   if (body !== undefined) headers['Content-Type'] = 'application/json'
 
   const response = await fetch(`${API_BASE}${path}`, {

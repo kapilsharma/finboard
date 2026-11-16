@@ -45,6 +45,7 @@ from finboard.domain.errors import (
     PayloadTooLarge,
     ReconciliationMismatch,
     ServiceUnavailable,
+    StorageQuotaExceeded,
     ValidationFailed,
 )
 from finboard.domain.fingerprint import (
@@ -68,6 +69,7 @@ from finboard.services.categoriser import Categoriser, Decision
 from finboard.services.jobs import JobQueue, JobService
 from finboard.services.parser_settings import ParserSettingsService, parse_options
 from finboard.storage.blob import BlobNotFound, BlobStore, import_blob_key
+from finboard.storage.ratelimit import RateLimiter
 from finboard.storage.secrets import SecretStore
 
 log = structlog.get_logger(__name__)
@@ -118,6 +120,9 @@ class ImportLimits:
     max_pages: int
     parse_concurrency_per_user: int
     staged_ttl: timedelta
+    # Server mode only (ADR-0041); None and 0 mean no limit.
+    storage_quota_bytes: int | None = None
+    uploads_per_hour: int = 0
 
     @classmethod
     def from_settings(cls, settings: Settings) -> ImportLimits:
@@ -126,6 +131,10 @@ class ImportLimits:
             max_pages=settings.max_pages,
             parse_concurrency_per_user=settings.parse_concurrency_per_user,
             staged_ttl=timedelta(days=settings.staged_import_ttl_days),
+            storage_quota_bytes=(
+                settings.storage_quota_bytes or None if settings.is_server else None
+            ),
+            uploads_per_hour=settings.upload_rate_per_hour if settings.is_server else 0,
         )
 
 
@@ -143,6 +152,7 @@ class ImportService:
         registry: ParserRegistry,
         limits: ImportLimits,
         secrets: SecretStore | None = None,
+        limiter: RateLimiter | None = None,
         embed_after_commit: bool = False,
     ) -> None:
         self.embed_after_commit = embed_after_commit
@@ -151,6 +161,7 @@ class ImportService:
         self.queue = queue
         self.registry = registry
         self.limits = limits
+        self.limiter = limiter
         self.secrets = secrets
         self.jobs = JobService(uow, queue)
 
@@ -164,6 +175,19 @@ class ImportService:
             )
         if not is_pdf(data):
             raise ValidationFailed("Only PDF statements are supported")
+        if self.limiter is not None:
+            await self.limiter.hit(
+                f"upload:{self.uow.user_id}",
+                limit=self.limits.uploads_per_hour,
+                window=3600,
+                detail="Too many uploads in the last hour. Try again later.",
+            )
+        quota = self.limits.storage_quota_bytes
+        if quota is not None and await self.uow.imports.stored_bytes() + len(data) > quota:
+            raise StorageQuotaExceeded(
+                f"Your stored statements would pass {quota // (1024 * 1024)} MB. Roll back or "
+                "discard old imports, or turn off keeping the original files, to free space."
+            )
         batch = await self.uow.imports.add(
             ImportBatch(
                 status=ImportStatus.UPLOADED,

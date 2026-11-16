@@ -4,6 +4,7 @@ from finboard.api.routers import (
     accounts,
     ai,
     ask,
+    auth,
     budgets,
     categories,
     dashboard,
@@ -23,6 +24,7 @@ from finboard.api.routers import (
 api_router = APIRouter()
 for module in (
     health,
+    auth,
     me,
     accounts,
     categories,

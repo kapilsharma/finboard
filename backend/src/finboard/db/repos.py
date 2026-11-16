@@ -357,6 +357,13 @@ class ImportRepo(_UserScoped):
         )
         return (await self.session.execute(stmt)).scalar_one_or_none()
 
+    async def stored_bytes(self) -> int:
+        """Size of the statements this user still has in blob storage (the quota's measure)."""
+        stmt = select(func.coalesce(func.sum(ImportBatch.file_size), 0)).where(
+            ImportBatch.user_id == self.user_id, ImportBatch.blob_key.is_not(None)
+        )
+        return int(await self.session.scalar(stmt) or 0)
+
     async def count_in_flight(self) -> int:
         stmt = select(func.count()).where(
             ImportBatch.user_id == self.user_id,
