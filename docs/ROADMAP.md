@@ -173,6 +173,8 @@ flowchart LR
 | Parser enable/options per user reach detection and `parse()` | `tests/integration/test_parser_settings.py` |
 
 ## M6 — Remaining bank adapters (parallel after M2)
+**Status:** `icici_savings_pdf` built (issue #9), from the owner's masked layout shared locally rather than on the public issue. The real-statement check is the owner's PR checklist. Remaining adapters: not started.
+
 **Scope, in order:** `icici_savings_pdf` (issue #9, moved from M2) → `icici_cc_pdf` (second, because it exercises the liability/reconciliation path early) → `kotak_savings_pdf` → `hsbc_savings_pdf` → `yes_savings_pdf` → `csb_savings_pdf` (order confirmed by owner). Optional later: `hdfc_home_loan_pdf`, LIC premium statement, MF CAS (v2). These are not needed for correct metrics; see ARCHITECTURE §9. Each has a layout-only synthetic fixture builder. The owner validates locally on real statements, which never enter the repo. `CONTRIBUTING.md › How to add your bank` and the `_template` adapter landed early, in M2.
 
 | Acceptance criterion | Proven by |

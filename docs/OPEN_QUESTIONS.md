@@ -27,7 +27,7 @@ Revision 4 (2026-11-04: AI questions added). Each open item has a **recommended 
 | # | Question | Recommended default | Blocks |
 |---|---|---|---|
 | **OQ-25** | Home loan (HDFC): how should it count? | **The EMI debit from savings is an expense, *Loan EMI*** (as in the mockup). An HDFC loan statement isn't needed for v1. If imported later, it goes to a `loan` account and its rows are *Account movement* (transfer), so nothing is double counted. Splitting interest (expense) from principal (saving) is a v2 idea | M3 seed |
-| **OQ-28** | Getting the ICICI layout without real data in the repo | You run `finboard inspect-layout statement.pdf` locally (M2). It prints the page structure with every digit as `9` and letter as `X`. You share that output (or describe the columns), and I build a synthetic fixture from it. The real PDF never leaves your machine | M2 |
+| **OQ-28** | Getting the ICICI layout without real data in the repo | You run `finboard inspect-layout statement.pdf` locally (M2). It prints the page structure with every digit as `9` and letter as `X`. You share that output (or describe the columns), and I build a synthetic fixture from it. The real PDF never leaves your machine. *Done for #9 (2026-11-16): the masked output was shared in a local session, not posted on the public issue, because masking still reveals row counts and amount magnitudes* | M2 |
 | OQ-6 | CC bill payment pairing: auto-confirm or suggest? | **Suggest.** Rules still mark `CC BILL PAYMENT` as Card payment (transfer) | M3 |
 | OQ-7 | Budgets by parent or leaf category? | **Leaf**; a parent budget covers its children | M4 |
 | OQ-8 | Cash-flow chart range | **Trailing 12 months** | M4 |

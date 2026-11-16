@@ -40,7 +40,9 @@ An adapter turns one bank's statement format into Finboard's canonical `ParsedSt
 
    It prints the page structure with every digit shown as `9` and every letter as `X`. It asks
    for the password if the PDF is encrypted, and reads the file locally only. Check the output
-   before you paste it anywhere (an issue, a chat).
+   before you paste it anywhere (an issue, a chat). You don't have to publish it: masking hides
+   the values but still shows how many rows there are and roughly how large the amounts are.
+   If you write the adapter yourself, keep the output on your machine and paste it nowhere.
 2. **Copy the template.** Copy `backend/src/finboard/parsers/builtin/_template/` to
    `backend/src/finboard/parsers/builtin/<bank>_<account>_pdf/` (for example `kotak_savings_pdf`).
    It is a complete, tested adapter for a made-up "Example Bank", so start from working code.
@@ -86,6 +88,27 @@ An adapter turns one bank's statement format into Finboard's canonical `ParsedSt
    a few of your own statements. They should all reconcile, and importing them again should skip
    every row. In the pull request, say that you did this. Don't attach the statements, screenshots
    of them, or the unmasked layout.
+
+### Lessons from the ICICI savings adapter
+
+`parsers/builtin/icici_savings_pdf/` is a real adapter worth reading before you write yours.
+What its layout taught us:
+
+- **Find columns by position, not by text.** Amounts are right-aligned under their header, so
+  match a word's right edge (`x1`) to the header's right edge. A deposit and a withdrawal look
+  the same as text.
+- **Rows may not be separated by gaps.** ICICI centres each row vertically: the date and amounts
+  sit in the middle of the row's description lines. Grouping lines by "nearest date line" breaks
+  when a long row sits next to a short one. Look for the rule the layout follows (there: as many
+  lines above the date as below), and write a test with long rows next to one-line rows.
+- **Words can be glued together.** When two columns' text nearly touches, the PDF text layer
+  fuses them (`28-10-2026CMS`). Match a date at the *start* of a word, not the whole word.
+- **Use the statement's own totals.** If each page prints a `Total` row, check your parsed rows
+  against it and add a warning when they differ. It is the cheapest way to notice, on a real
+  statement, a row that was read wrongly.
+- **Make the fixture copy the awkward parts**: wrapped and centred descriptions, mid-token line
+  breaks, fused words, page breaks. Then check it with `inspect-layout` on the fixture: its
+  masked output should look like your statement's.
 
 Adapters can also live in their own package: register the same two entry-point groups in that
 package's `pyproject.toml`. While you develop one, `FINBOARD_EXTRA_PARSERS='["my_pkg.parser:MyParser"]'`
