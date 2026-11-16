@@ -99,6 +99,12 @@ jobs:
         run: |
           uv sync --locked --extra ai
           uv run pytest
+      # ROADMAP M8: the same tenancy tests, unchanged, against real sign-in sessions.
+      - name: Tenancy suite with real sessions (server mode)
+        working-directory: backend
+        env:
+          FINBOARD_TEST_AUTH: session
+        run: uv run pytest tests/integration/tenancy
 
   backend-portable:
     name: Unit tests (${{ matrix.os }})
@@ -195,6 +201,9 @@ jobs:
           npm ci
           npx playwright install --with-deps chromium
           npx playwright test
+      - name: Playwright, server mode (sign-up, sign-in, two users)
+        working-directory: e2e
+        run: npx playwright test -c playwright.server.config.ts
       - name: Upload the report on failure
         if: failure()
         uses: actions/upload-artifact@v5

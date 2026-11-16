@@ -113,6 +113,8 @@ if [ "$BACKEND" = 1 ]; then
   step "Backend: import layers" in_backend uv run --frozen lint-imports
   step "Backend: Postgres + Redis reachable" services_up
   step "Backend: pytest (unit + integration + tenancy)" in_backend uv run --frozen pytest -q
+  step "Backend: tenancy suite with real sessions (server mode)" \
+    in_backend env FINBOARD_TEST_AUTH=session uv run --frozen pytest -q tests/integration/tenancy
 fi
 
 # --- frontend (jobs: lint [frontend part], frontend)
@@ -133,6 +135,7 @@ if [ "$BACKEND" = 1 ] && [ "$FRONTEND" = 1 ] && [ "$FAST" = 0 ] && [ "$E2E" = 1 
   step "E2E: install (npm ci)" in_e2e npm ci --no-audit --no-fund
   step "E2E: Postgres + Redis reachable" services_up
   step "E2E: Playwright" in_e2e npx playwright test
+  step "E2E: Playwright, server mode" in_e2e npx playwright test -c playwright.server.config.ts
 fi
 
 # --- packaged stack (job: packaged). Builds deploy/Dockerfile and smoke-tests deploy/compose.yaml.

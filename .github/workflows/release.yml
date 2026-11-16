@@ -3,6 +3,7 @@
 #
 #   ghcr.io/<owner>/finboard:X.Y.Z, :X.Y, :latest             the app
 #   ghcr.io/<owner>/finboard:X.Y.Z-ai, :X.Y-ai, :latest-ai    + the `ai` extra and embedding model
+#   ghcr.io/<owner>/finboard:X.Y.Z-s3, :X.Y-s3, :latest-s3    + the `s3` extra (S3 blob storage)
 name: Release
 
 on:
@@ -49,10 +50,16 @@ jobs:
         include:
           - variant: default
             with_ai: "0"
+            with_s3: "0"
             suffix: ""
           - variant: ai
             with_ai: "1"
+            with_s3: "0"
             suffix: "-ai"
+          - variant: s3
+            with_ai: "0"
+            with_s3: "1"
+            suffix: "-s3"
     steps:
       - uses: actions/checkout@v5
       - uses: docker/setup-qemu-action@v4
@@ -80,6 +87,7 @@ jobs:
           platforms: linux/amd64,linux/arm64
           build-args: |
             WITH_AI=${{ matrix.with_ai }}
+            WITH_S3=${{ matrix.with_s3 }}
             VERSION=${{ needs.verify.outputs.version }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
