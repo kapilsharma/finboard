@@ -4,7 +4,6 @@ so it skips unless the model was fetched (`finboard ai fetch-model`)."""
 
 from __future__ import annotations
 
-import resource
 import sys
 import time
 from pathlib import Path
@@ -21,6 +20,9 @@ from finboard.jobs import tasks
 
 from ..categorisation_helpers import account, add_txns
 from ..conftest import RecordingJobQueue
+
+if sys.platform != "win32":
+    import resource  # Unix only
 
 pytestmark = pytest.mark.perf
 TXNS = 5_000
@@ -58,10 +60,13 @@ async def test_embed_5k_within_budget(
     async with unit_of_work(sessionmaker, alice.user_id) as uow:
         assert await uow.embeddings.counts(embedding_key(settings.embed_model)) == (TXNS, TXNS)
         assert (await uow.jobs.get(job.id)) is not None
+    print(f"\nembedded {TXNS} in {elapsed:.1f}s")
+    assert elapsed < 60
+    if sys.platform == "win32":
+        return  # no `resource` module: the memory budget is checked on Linux and macOS
     # ru_maxrss is the whole test process (an upper bound for a worker): KB on Linux.
     peak_mb = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / (
         1024 * 1024 if sys.platform == "darwin" else 1024
     )
-    print(f"\nembedded {TXNS} in {elapsed:.1f}s, peak RSS {peak_mb:.0f} MB")
-    assert elapsed < 60
+    print(f"peak RSS {peak_mb:.0f} MB")
     assert peak_mb < 600

@@ -9,10 +9,17 @@ psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname postgres <<SQL
 CREATE ROLE finboard_owner LOGIN PASSWORD '${FINBOARD_OWNER_PASSWORD}';
 CREATE ROLE finboard_app LOGIN PASSWORD '${FINBOARD_APP_PASSWORD}' NOBYPASSRLS;
 CREATE DATABASE finboard OWNER finboard_owner;
-CREATE DATABASE finboard_test OWNER finboard_owner;
 SQL
 
-for db in finboard finboard_test; do
+# The test database is for development and CI. The packaged stack (deploy/compose.yaml) sets
+# FINBOARD_CREATE_TEST_DB=0.
+databases="finboard"
+if [ "${FINBOARD_CREATE_TEST_DB:-1}" = "1" ]; then
+  psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname postgres     -c "CREATE DATABASE finboard_test OWNER finboard_owner"
+  databases="finboard finboard_test"
+fi
+
+for db in $databases; do
   psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$db" <<SQL
 REVOKE ALL ON DATABASE $db FROM PUBLIC;
 GRANT CONNECT ON DATABASE $db TO finboard_app;

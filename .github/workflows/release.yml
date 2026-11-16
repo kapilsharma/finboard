@@ -1,0 +1,121 @@
+# Release: pushing a tag `vX.Y.Z` publishes the images to GHCR and creates the GitHub release.
+# Steps for the person releasing are in CONTRIBUTING.md › Releasing.
+#
+#   ghcr.io/<owner>/finboard:X.Y.Z, :X.Y, :latest             the app
+#   ghcr.io/<owner>/finboard:X.Y.Z-ai, :X.Y-ai, :latest-ai    + the `ai` extra and embedding model
+name: Release
+
+on:
+  push:
+    tags: ["v[0-9]+.[0-9]+.[0-9]+"]
+
+permissions:
+  contents: read
+
+env:
+  IMAGE: ghcr.io/${{ github.repository }}
+
+jobs:
+  verify:
+    name: Version, changelog and smoke test
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v5
+      - name: The tag matches the package version and has a changelog section
+        id: version
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          grep -qx "version = \"$version\"" backend/pyproject.toml ||
+            { echo "::error::backend/pyproject.toml is not at version $version"; exit 1; }
+          grep -qx "__version__ = \"$version\"" backend/src/finboard/__init__.py ||
+            { echo "::error::finboard.__version__ is not $version"; exit 1; }
+          python3 scripts/changelog_section.py "$version" > /dev/null
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+      - name: Smoke-test the stack built from this tag
+        run: bash scripts/smoke-compose.sh
+
+  image:
+    name: Image (${{ matrix.variant }})
+    needs: verify
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - variant: default
+            with_ai: "0"
+            suffix: ""
+          - variant: ai
+            with_ai: "1"
+            suffix: "-ai"
+    steps:
+      - uses: actions/checkout@v5
+      - uses: docker/setup-qemu-action@v4
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ${{ env.IMAGE }}
+          flavor: |
+            latest=false
+            suffix=${{ matrix.suffix }}
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=latest
+      - uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: deploy/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          build-args: |
+            WITH_AI=${{ matrix.with_ai }}
+            VERSION=${{ needs.verify.outputs.version }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          push: true
+          sbom: true
+          provenance: mode=max
+          cache-from: type=gha,scope=${{ matrix.variant }}
+          cache-to: type=gha,scope=${{ matrix.variant }},mode=max
+      # The SBOM is attached to the image as an attestation; also keep a copy on the release.
+      - name: Export the SBOM (SPDX)
+        run: |
+          docker buildx imagetools inspect \
+            "$IMAGE:${{ needs.verify.outputs.version }}${{ matrix.suffix }}" \
+            --format '{{ json (index .SBOM "linux/amd64").SPDX }}' \
+            > "finboard-${{ needs.verify.outputs.version }}${{ matrix.suffix }}.spdx.json"
+      - uses: actions/upload-artifact@v5
+        with:
+          name: sbom-${{ matrix.variant }}
+          path: "*.spdx.json"
+
+  release:
+    name: GitHub release
+    needs: [verify, image]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/download-artifact@v5
+        with:
+          pattern: sbom-*
+          merge-multiple: true
+      - name: Create the release from the changelog section
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 scripts/changelog_section.py "${{ needs.verify.outputs.version }}" > notes.md
+          gh release create "$GITHUB_REF_NAME" --title "Finboard ${{ needs.verify.outputs.version }}" \
+            --notes-file notes.md --verify-tag ./*.spdx.json

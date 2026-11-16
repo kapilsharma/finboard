@@ -15,7 +15,7 @@ Changes vs §9:
 flowchart LR
   M1[M1 Platform skeleton] --> M2[M2 Import pipeline] --> M3[M3 Categorisation] --> M4[M4 Dashboard + txns] --> M5[M5 Settings + data] --> M7[M7 Packaging v1]
   M2 --> M6[M6 Bank adapters]
-  M6 --> M7
+  M6 -.remaining adapters parked.-> M7
   M3 --> M3a[M3a AI suggestions] --> M7
   M4 --> M4a[M4a Ask Finboard] --> M7
   M7 -.post-v1.-> M8[M8 Multi-user login]
@@ -173,7 +173,7 @@ flowchart LR
 | Parser enable/options per user reach detection and `parse()` | `tests/integration/test_parser_settings.py` |
 
 ## M6 — Remaining bank adapters (parallel after M2)
-**Status:** `icici_savings_pdf` built (issue #9), from the owner's masked layout shared locally rather than on the public issue. The real-statement check is the owner's PR checklist. Remaining adapters: not started.
+**Status:** `icici_savings_pdf` built (issue #9, PR #18), from the owner's masked layout shared locally rather than on the public issue. **The remaining adapters (issue #10) are parked** (owner, 2026-11-16): v1 ships with ICICI savings plus the `generic_table` fallback, and M7 no longer waits for them. Still open for ICICI savings: the owner's real-statement check in the second acceptance row, which isn't recorded yet.
 
 **Scope, in order:** `icici_savings_pdf` (issue #9, moved from M2) → `icici_cc_pdf` (second, because it exercises the liability/reconciliation path early) → `kotak_savings_pdf` → `hsbc_savings_pdf` → `yes_savings_pdf` → `csb_savings_pdf` (order confirmed by owner). Optional later: `hdfc_home_loan_pdf`, LIC premium statement, MF CAS (v2). These are not needed for correct metrics; see ARCHITECTURE §9. Each has a layout-only synthetic fixture builder. The owner validates locally on real statements, which never enter the repo. `CONTRIBUTING.md › How to add your bank` and the `_template` adapter landed early, in M2.
 
@@ -183,15 +183,24 @@ flowchart LR
 | Owner: last 3 real statements per account reconcile. ≥ 80 % auto-categorised with starter pack + own rules | owner checklist in PR (no data attached) |
 | A newcomer can add an adapter from CONTRIBUTING alone | dry run |
 
-## M7 — Packaging v1
+## M7 — Packaging v1 ✅ (2026-11-16; first release tag pending)
+*Done: `deploy/Dockerfile` (SPA build → uv environment → slim non-root runtime with Postgres 18's `pg_dump`; `WITH_AI=1` variant with the embedding model baked in), `deploy/compose.yaml`, `finboard init --compose`, the `packaged` CI job (`scripts/smoke-compose.sh --e2e`), the release workflow, README and CHANGELOG. Not exercised yet: the release workflow itself, which first runs when the owner pushes a tag. Deviations ([ADR-0040](adr/0040-packaging-as-built.md)):*
+- *`init` is its own compose service (`docker compose run --rm init`), not `run --rm api finboard init`: it has to write `deploy/.env` on the host, so it runs as root with no network, and hands the file to the directory's owner.*
+- *One `data` volume holds blobs and backups (ARCHITECTURE §1 drew two).*
+- *Db, redis, worker and beat are on an `internal` network with no route out; only the api is also on the default network.*
+- *The packaged app sets `FINBOARD_ENV=prod`: `/api/docs` is off (Swagger UI loads from a CDN) and `finboard serve` refuses to start without a secret key.*
+- *Users clone the repository for `deploy/` (compose file + Postgres init script); the image alone isn't enough.*
+- *The happy path is `e2e/tests/happy-path.spec.ts` and also runs in the ordinary e2e job.*
+- *OQ-19: the image is `ghcr.io/kapilsharma/finboard`, in the owner's namespace, so no name clash is possible. Nothing is published to PyPI, so that name wasn't checked.*
+
 **Scope:** multi-stage Dockerfile (SPA build → slim Python, non-root), `deploy/compose.yaml` (api, worker, beat, db, redis; only api published on 127.0.0.1), `finboard init`, migrations on start under an advisory lock, release workflow (GHCR image on tag), README with demo-data screenshots, CHANGELOG.
 
 | Acceptance criterion | Proven by |
 |---|---|
-| Fresh machine: `init` + `compose up` gives a working app at 127.0.0.1:8765. Data survives `down`/`up` | CI compose smoke job |
-| Postgres and Redis are not reachable from the host network | CI smoke: port probe fails |
-| Image runs as non-root and contains no PDFs, dumps or external URLs in the bundle | CI image checks |
-| Playwright happy path passes against the packaged stack | `e2e/happy-path.spec.ts` |
+| Fresh machine: `init` + `compose up` gives a working app at 127.0.0.1:8765. Data survives `down`/`up` | CI job `packaged`: `scripts/smoke-compose.sh` (init twice, `up --wait`, `/health/ready`, a worker job, transaction count before and after `down`/`up`) |
+| Postgres and Redis are not reachable from the host network | `smoke-compose.sh`: no published ports on db, redis, worker, beat; host probes of 5432 and 6379 fail; the api is bound to 127.0.0.1 only |
+| Image runs as non-root and contains no PDFs, dumps or external URLs in the bundle | `smoke-compose.sh`: uid of api, worker, beat; file scan of the image; `scripts/check_bundle.py`; `/api/docs` is a 404. Unit: `tests/unit/test_cli.py` |
+| Playwright happy path passes against the packaged stack | `e2e/tests/happy-path.spec.ts` via `smoke-compose.sh --e2e` (`E2E_BASE_URL`) |
 
 ## M8 — Multi-user login (post-v1, outline)
 **Scope:** `SessionBackend` (argon2id, Redis sessions, HttpOnly cookies, CSRF token), sign-up/login/logout UI in `AuthGate`, `FINBOARD_MODE=server`, per-user quotas and rate limits, `S3BlobStore`, hosting guide (TLS proxy). **Acceptance:** the tenancy suite passes unchanged with real sessions. Load test with 300 users.
