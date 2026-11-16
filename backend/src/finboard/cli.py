@@ -6,7 +6,8 @@ finboard beat      run the housekeeping scheduler (staged-import expiry, stale j
 finboard migrate   apply database migrations
 finboard dev       migrate, then API (reload) + worker (auto-restart) + Vite, Ctrl-C stops all
 finboard openapi   print the OpenAPI schema (used to generate frontend types)
-finboard init      write a secret key (FINBOARD_SECRET_KEY) to .env if there isn't one
+finboard init      write a secret key (FINBOARD_SECRET_KEY) to .env if there isn't one;
+                   --compose adds the database passwords for deploy/compose.yaml
 finboard parsers   list installed statement parsers (and any that failed to load)
 finboard inspect-layout <pdf>   print a statement's structure with contents masked
 finboard ai fetch-model  download the embedding model once (optional AI, ARCHITECTURE §18)
@@ -16,6 +17,7 @@ finboard demo-data synthetic sample transactions and limits for the local user (
 """
 
 import argparse
+import contextlib
 import getpass
 import json
 import os
@@ -57,6 +59,11 @@ def cmd_serve(args: argparse.Namespace) -> None:
     import uvicorn
 
     settings = get_settings()
+    if settings.env == "prod" and not settings.secret_key:
+        sys.exit(
+            "FINBOARD_SECRET_KEY is not set. Create it once with: "
+            "docker compose -f deploy/compose.yaml run --rm init"
+        )
     if not args.no_migrate:
         _migrate(backup_first=True)  # a pg_dump first when the schema is behind (§16)
     uvicorn.run(
@@ -98,6 +105,26 @@ def run_dev_worker() -> None:
     cmd_worker(argparse.Namespace(concurrency=1))
 
 
+def _env_keys(text: str) -> set[str]:
+    return {line.split("=", 1)[0].strip() for line in text.splitlines() if "=" in line}
+
+
+def _append_env(env_file: Path, values: dict[str, str]) -> list[str]:
+    """Append the `values` whose keys `env_file` doesn't define yet (mode 0600 when created).
+
+    Existing lines are never changed. Returns the keys written.
+    """
+    existing = env_file.read_text(encoding="utf-8") if env_file.is_file() else ""
+    missing = {key: value for key, value in values.items() if key not in _env_keys(existing)}
+    if not missing:
+        return []
+    prefix = "" if not existing or existing.endswith("\n") else "\n"
+    fd = os.open(env_file, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
+    with os.fdopen(fd, "a", encoding="utf-8") as handle:
+        handle.write(prefix + "".join(f"{key}={value}\n" for key, value in missing.items()))
+    return list(missing)
+
+
 def init_secret_key(env_file: Path) -> bool:
     """Append FINBOARD_SECRET_KEY to `env_file` unless it is already configured.
 
@@ -106,19 +133,46 @@ def init_secret_key(env_file: Path) -> bool:
     """
     if os.environ.get("FINBOARD_SECRET_KEY"):
         return False
-    existing = env_file.read_text(encoding="utf-8") if env_file.is_file() else ""
-    if any(line.strip().startswith("FINBOARD_SECRET_KEY=") for line in existing.splitlines()):
-        return False
-    line = f"FINBOARD_SECRET_KEY={secrets.token_urlsafe(32)}\n"
-    prefix = "" if not existing or existing.endswith("\n") else "\n"
-    fd = os.open(env_file, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
-    with os.fdopen(fd, "a", encoding="utf-8") as handle:
-        handle.write(prefix + line)
-    return True
+    return bool(_append_env(env_file, {"FINBOARD_SECRET_KEY": secrets.token_urlsafe(32)}))
+
+
+# Read by deploy/compose.yaml. Hex only, so a password is safe in a URL and in the SQL of
+# deploy/postgres/init/01-finboard.sh without quoting.
+COMPOSE_PASSWORDS = ("POSTGRES_PASSWORD", "FINBOARD_OWNER_PASSWORD", "FINBOARD_APP_PASSWORD")
+
+
+def init_compose_env(env_file: Path) -> list[str]:
+    """Write what deploy/compose.yaml needs: the secret key and the database passwords.
+
+    Only missing keys are added. The passwords are set in Postgres when its volume is first
+    created, so an existing one is never replaced. Returns the keys written.
+    """
+    written = _append_env(
+        env_file,
+        {
+            "FINBOARD_SECRET_KEY": secrets.token_urlsafe(32),
+            **{name: secrets.token_hex(24) for name in COMPOSE_PASSWORDS},
+        },
+    )
+    if sys.platform != "win32" and os.geteuid() == 0:
+        # The compose `init` service runs as root to write into the mounted directory. Hand
+        # the file to that directory's owner, or they couldn't read their own .env.
+        owner = env_file.parent.stat()
+        with contextlib.suppress(OSError):  # Docker Desktop mounts map ownership themselves
+            os.chown(env_file, owner.st_uid, owner.st_gid)
+    return written
 
 
 def cmd_init(args: argparse.Namespace) -> None:
     env_file = Path(args.env_file)
+    if args.compose:
+        written = init_compose_env(env_file)
+        if written:
+            print(f"Wrote {', '.join(written)} to {env_file.name}. Keep this file private.")
+        else:
+            print(f"{env_file.name} already has the secret key and passwords; nothing to do.")
+        print("Next: docker compose -f deploy/compose.yaml up -d, then http://127.0.0.1:8765")
+        return
     if init_secret_key(env_file):
         print(f"Wrote FINBOARD_SECRET_KEY to {env_file} (keep this file private).")
     else:
@@ -401,6 +455,11 @@ def main(argv: list[str] | None = None) -> None:
 
     init = sub.add_parser("init", help="create a secret key in .env")
     init.add_argument("--env-file", default=".env", help="file to write (default: ./.env)")
+    init.add_argument(
+        "--compose",
+        action="store_true",
+        help="also write the database passwords that deploy/compose.yaml needs",
+    )
     init.set_defaults(func=cmd_init)
 
     sub.add_parser("parsers", help="list installed parsers").set_defaults(func=cmd_parsers)

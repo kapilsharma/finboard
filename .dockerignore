@@ -1,0 +1,21 @@
+# The image is built from backend/ and frontend/ only (deploy/Dockerfile). Everything else,
+# and anything that could hold private data or secrets, stays out of the build context.
+*
+!backend/pyproject.toml
+!backend/uv.lock
+!backend/src
+!frontend
+
+**/__pycache__
+**/*.py[cod]
+**/node_modules
+**/.env
+**/.env.*
+**/.devdata
+**/*.pdf
+**/*.zip
+**/*.dump
+**/*.sql
+backend/src/finboard/web/static
+frontend/openapi.json
+frontend/dist

@@ -1,0 +1,141 @@
+# Finboard on your own machine (ROADMAP M7, ARCHITECTURE §1 and §16).
+#
+#   docker compose -f deploy/compose.yaml run --rm init     # once: writes deploy/.env
+#   docker compose -f deploy/compose.yaml up -d             # app at http://127.0.0.1:8765
+#
+# Only the api is published, and only on 127.0.0.1. Postgres, Redis, the worker and the
+# scheduler sit on an internal network with no route to the host network or the internet.
+# Your data lives in the named volumes `finboard_db-data` and `finboard_data`; they survive
+# `down` and upgrades (`docker compose pull`, then `up -d`). `down -v` deletes them.
+name: finboard
+
+x-app: &app
+  image: ${FINBOARD_IMAGE:-ghcr.io/kapilsharma/finboard:latest}
+  restart: unless-stopped
+  init: true
+  read_only: true
+  tmpfs:
+    - /tmp
+  cap_drop:
+    - ALL
+  security_opt:
+    - no-new-privileges:true
+  volumes:
+    - data:/data
+
+x-app-env: &app-env
+  FINBOARD_SECRET_KEY: ${FINBOARD_SECRET_KEY:-}
+  FINBOARD_DATABASE_URL: postgresql+asyncpg://finboard_app:${FINBOARD_APP_PASSWORD:-}@db:5432/finboard
+  FINBOARD_REDIS_URL: redis://redis:6379/0
+  FINBOARD_LOG_LEVEL: ${FINBOARD_LOG_LEVEL:-INFO}
+  # Optional AI, off unless you turn it on in deploy/.env (README › AI features).
+  FINBOARD_AI_SUGGESTIONS: ${FINBOARD_AI_SUGGESTIONS:-false}
+  FINBOARD_AI_ASK: ${FINBOARD_AI_ASK:-off}
+  FINBOARD_AI_ASK_SQL: ${FINBOARD_AI_ASK_SQL:-false}
+  FINBOARD_GEMINI_API_KEY: ${FINBOARD_GEMINI_API_KEY:-}
+  FINBOARD_OLLAMA_URL: ${FINBOARD_OLLAMA_URL:-http://host.docker.internal:11434}
+
+services:
+  # One-off: writes deploy/.env with a secret key and database passwords. It runs as root only
+  # so the file can be handed to whoever owns this directory; it has no network.
+  init:
+    image: ${FINBOARD_IMAGE:-ghcr.io/kapilsharma/finboard:latest}
+    profiles: ["setup"]
+    user: "0:0"
+    network_mode: none
+    volumes:
+      - ${FINBOARD_CONFIG_DIR:-.}:/config
+    command: ["finboard", "init", "--compose", "--env-file", "/config/.env"]
+
+  db:
+    image: pgvector/pgvector:pg18-trixie # Postgres 18 + pgvector (ADR-0031)
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-}
+      FINBOARD_OWNER_PASSWORD: ${FINBOARD_OWNER_PASSWORD:-}
+      FINBOARD_APP_PASSWORD: ${FINBOARD_APP_PASSWORD:-}
+      FINBOARD_CREATE_TEST_DB: "0"
+    volumes:
+      - db-data:/var/lib/postgresql
+      - ./postgres/init:/docker-entrypoint-initdb.d:ro
+    networks:
+      - backend
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d finboard"]
+      interval: 3s
+      timeout: 3s
+      retries: 40
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    # No persistence: Redis only holds queued jobs and short-lived secrets (ADR-0027).
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    networks:
+      - backend
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 3s
+      timeout: 3s
+      retries: 40
+
+  api:
+    <<: *app
+    # Migrates first (after a pg_dump when the schema is older), then serves the API and the app.
+    command: ["finboard", "serve", "--workers", "${FINBOARD_API_WORKERS:-2}"]
+    environment:
+      <<: *app-env
+      FINBOARD_MIGRATION_DATABASE_URL: postgresql+asyncpg://finboard_owner:${FINBOARD_OWNER_PASSWORD:-}@db:5432/finboard
+    ports:
+      - "127.0.0.1:${FINBOARD_PORT:-8765}:8000"
+    networks:
+      - backend
+      - default
+    extra_hosts:
+      - host.docker.internal:host-gateway # an Ollama on this machine, if you use one
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request as u; u.urlopen('http://127.0.0.1:8000/api/v1/health/ready', timeout=3)"
+      interval: 5s
+      timeout: 5s
+      retries: 40
+      start_period: 20s
+
+  worker:
+    <<: *app
+    command: ["finboard", "worker", "--concurrency", "${FINBOARD_WORKER_CONCURRENCY:-2}"]
+    environment: *app-env
+    networks:
+      - backend
+    depends_on:
+      api:
+        condition: service_healthy
+
+  beat:
+    <<: *app
+    command: ["finboard", "beat"]
+    environment: *app-env
+    networks:
+      - backend
+    depends_on:
+      api:
+        condition: service_healthy
+
+networks:
+  # No gateway: containers here can't reach the host network or the internet, and nothing
+  # on the host can reach them.
+  backend:
+    internal: true
+
+volumes:
+  db-data:
+  data:

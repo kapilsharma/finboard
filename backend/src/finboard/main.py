@@ -91,7 +91,9 @@ def create_app(
         title="Finboard",
         version=__version__,
         lifespan=lifespan,
-        docs_url="/api/docs",
+        # Swagger UI loads its assets from a CDN, so it is a development tool only: the
+        # packaged app (FINBOARD_ENV=prod) makes no outbound requests (§13).
+        docs_url=None if settings.env == "prod" else "/api/docs",
         redoc_url=None,
         openapi_url="/api/openapi.json",
     )

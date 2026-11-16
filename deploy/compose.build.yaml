@@ -1,0 +1,20 @@
+# Build the image from this checkout instead of pulling the released one (developers, CI):
+#
+#   docker compose -f deploy/compose.yaml -f deploy/compose.build.yaml build
+#   docker compose -f deploy/compose.yaml -f deploy/compose.build.yaml up -d
+#
+# FINBOARD_WITH_AI=1 builds the variant with the `ai` extra and the embedding model.
+x-build: &build
+  image: ${FINBOARD_IMAGE:-finboard:local}
+  build:
+    context: ..
+    dockerfile: deploy/Dockerfile
+    args:
+      WITH_AI: ${FINBOARD_WITH_AI:-0}
+  pull_policy: never
+
+services:
+  init: *build
+  api: *build
+  worker: *build
+  beat: *build
