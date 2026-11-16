@@ -158,7 +158,7 @@ found="$(compose exec -T --user 0 api find / -xdev -type f \
 static="$(compose exec -T api python -c \
   'import finboard, pathlib; print(pathlib.Path(finboard.__file__).parent / "web" / "static")')"
 compose exec -T api python - "$static" <"$ROOT/scripts/check_bundle.py"
-curl -s -o /dev/null -w '%{http_code}' "$BASE/api/docs" | grep -q 404 ||
+[ "$(curl -s -o "$CONF/docs.out" -w '%{http_code}' "$BASE/api/docs")" = 404 ] ||
   fail "/api/docs (Swagger UI, which loads from a CDN) is served by the packaged app"
 
 printf '\n\033[32mPackaged stack: all smoke checks passed\033[0m\n'

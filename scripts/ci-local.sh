@@ -7,10 +7,13 @@
 #   scripts/ci-local.sh --backend    backend only        (combine with --fast)
 #   scripts/ci-local.sh --frontend   frontend only + generated API types check
 #   scripts/ci-local.sh --no-e2e     everything except the Playwright e2e
+#   scripts/ci-local.sh --no-packaged  everything except the packaged-stack smoke test
 #
 # Integration tests need Postgres 18 on 127.0.0.1:55432 and Redis on 127.0.0.1:56379:
 #   docker compose -f deploy/compose.dev.yaml up -d      (with Docker)
 #   bash scripts/setup-native-services.sh                (Debian/Ubuntu, without Docker)
+# The packaged-stack step builds the Docker image and needs Docker; without Docker it is skipped
+# with a notice (CI still runs it).
 # The e2e step needs a Playwright Chromium once: (cd e2e && npx playwright install chromium),
 # or E2E_CHROMIUM_PATH=/path/to/chrome to use one that is already installed.
 # Exit code is non-zero if any step fails; it stops at the first failure.
@@ -21,6 +24,7 @@ FAST=0
 BACKEND=1
 FRONTEND=1
 E2E=1
+PACKAGED=1
 
 for arg in "$@"; do
   case "$arg" in
@@ -28,7 +32,8 @@ for arg in "$@"; do
     --backend) FRONTEND=0 ;;
     --frontend) BACKEND=0 ;;
     --no-e2e) E2E=0 ;;
-    -h | --help) sed -n '2,16p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    --no-packaged) PACKAGED=0 ;;
+    -h | --help) sed -n '2,19p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) echo "unknown option: $arg (see --help)" >&2; exit 2 ;;
   esac
 done
@@ -128,6 +133,19 @@ if [ "$BACKEND" = 1 ] && [ "$FRONTEND" = 1 ] && [ "$FAST" = 0 ] && [ "$E2E" = 1 
   step "E2E: install (npm ci)" in_e2e npm ci --no-audit --no-fund
   step "E2E: Postgres + Redis reachable" services_up
   step "E2E: Playwright" in_e2e npx playwright test
+fi
+
+# --- packaged stack (job: packaged). Builds deploy/Dockerfile and smoke-tests deploy/compose.yaml.
+if [ "$BACKEND" = 1 ] && [ "$FRONTEND" = 1 ] && [ "$FAST" = 0 ] && [ "$PACKAGED" = 1 ]; then
+  if docker compose version >/dev/null 2>&1 && docker info >/dev/null 2>&1; then
+    if [ "$E2E" = 1 ]; then
+      step "Packaged stack: compose smoke + happy path" bash "$ROOT/scripts/smoke-compose.sh" --e2e
+    else
+      step "Packaged stack: compose smoke" bash "$ROOT/scripts/smoke-compose.sh"
+    fi
+  else
+    printf '\n\033[33mSKIPPED: packaged-stack smoke test (Docker is not available here). CI runs it.\033[0m\n'
+  fi
 fi
 
 printf '\n\033[32mAll checks passed\033[0m in %ss:\n' "$(( $(date +%s) - STARTED ))"

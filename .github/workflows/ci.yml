@@ -204,3 +204,40 @@ jobs:
             e2e/playwright-report/
             e2e/test-results/
           retention-days: 7
+
+  packaged:
+    name: Packaged stack (compose smoke + happy path)
+    runs-on: ubuntu-latest
+    env:
+      UV_PYTHON: "3.12"
+    steps:
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3 (no moving major tags since v8; pin by SHA)
+        with:
+          enable-cache: true
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: e2e/package-lock.json
+      - name: Backend install (builds the synthetic statement for the happy path)
+        working-directory: backend
+        run: uv sync --locked
+      - name: Playwright install
+        working-directory: e2e
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+      # ROADMAP M7: init + up, loopback-only exposure, non-root image, data survives
+      # down/up, nothing private or external in the image, and the Playwright happy path.
+      - name: Build the image, then smoke-test deploy/compose.yaml
+        run: bash scripts/smoke-compose.sh --e2e
+      - name: Upload the report on failure
+        if: failure()
+        uses: actions/upload-artifact@v5
+        with:
+          name: playwright-report-packaged
+          path: |
+            e2e/playwright-report/
+            e2e/test-results/
+          retention-days: 7

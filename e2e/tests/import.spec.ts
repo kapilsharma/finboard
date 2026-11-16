@@ -1,45 +1,15 @@
-import { execFileSync } from 'node:child_process'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join, resolve } from 'node:path'
-import { expect, test, type Page } from '@playwright/test'
-
-const PASSWORD = 'E2e-Statement-Pw'
-
-interface Fixture {
-  path: string
-  rows: number
-  account_hint: string
-  first_description: string
-}
+import { join } from 'node:path'
+import { expect, test } from '@playwright/test'
+import { makeFixture, uploadAndUnlock, type Fixture } from './helpers'
 
 let dir: string
 let fixture: Fixture
 
-/** A synthetic, encrypted statement written to a temp dir (never committed). */
-function makeFixture(seed: number): Fixture {
-  const path = join(dir, `statement-${seed}.pdf`)
-  const out = execFileSync(
-    'uv',
-    ['run', '--project', resolve(__dirname, '../../backend'), 'python', 'make_fixture.py', path, PASSWORD, String(seed)],
-    { cwd: resolve(__dirname, '..'), encoding: 'utf-8' },
-  )
-  return { path, ...JSON.parse(out) }
-}
-
-async function uploadAndUnlock(page: Page, path: string) {
-  await page.goto('/import')
-  await page.getByLabel('Choose PDF statements').setInputFiles(path)
-  const item = page.getByRole('listitem').filter({ hasText: /statement-\d+\.pdf/ }).first()
-  await expect(item.getByLabel('Statement password')).toBeVisible()
-  await item.getByLabel('Statement password').fill(PASSWORD)
-  await item.getByRole('button', { name: 'Unlock' }).click()
-  await item.getByRole('link', { name: 'Review and commit' }).click()
-}
-
 test.beforeAll(() => {
   dir = mkdtempSync(join(tmpdir(), 'finboard-e2e-'))
-  fixture = makeFixture(4)
+  fixture = makeFixture(dir, 4)
 })
 
 test.afterAll(() => rmSync(dir, { recursive: true, force: true }))
