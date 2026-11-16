@@ -11,6 +11,7 @@ x-build: &build
     dockerfile: deploy/Dockerfile
     args:
       WITH_AI: ${FINBOARD_WITH_AI:-0}
+      WITH_S3: ${FINBOARD_WITH_S3:-0}
   pull_policy: never
 
 services:

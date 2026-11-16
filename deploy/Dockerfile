@@ -2,6 +2,7 @@
 #
 #   docker build -f deploy/Dockerfile -t finboard .
 #   docker build -f deploy/Dockerfile --build-arg WITH_AI=1 -t finboard:ai .
+#   docker build -f deploy/Dockerfile --build-arg WITH_S3=1 -t finboard:s3 .
 #
 # Three stages: the SPA (node), the Python environment (uv), and a slim runtime that holds
 # neither node nor build tools and runs as a non-root user. One image serves the api, worker
@@ -32,16 +33,18 @@ ENV UV_COMPILE_BYTECODE=1 \
 # WITH_AI=1 adds the optional `ai` extra and bakes the embedding model in, so category
 # suggestions work with no download at run time (ARCHITECTURE §18).
 ARG WITH_AI=0
+# WITH_S3=1 adds the optional `s3` extra (boto3) for FINBOARD_BLOB_BACKEND=s3 (ADR-0026).
+ARG WITH_S3=0
 WORKDIR /src/backend
 COPY backend/pyproject.toml backend/uv.lock ./
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --locked --no-dev --no-install-project $([ "$WITH_AI" = 1 ] && echo "--extra ai")
+    uv sync --locked --no-dev --no-install-project $([ "$WITH_AI" = 1 ] && echo "--extra ai") $([ "$WITH_S3" = 1 ] && echo "--extra s3")
 COPY backend/src ./src
 COPY --from=web /src/backend/src/finboard/web/static ./src/finboard/web/static
 # Not editable: the package (with the built SPA inside it) is copied into the environment, so
 # the runtime stage needs the environment only.
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --locked --no-dev --no-editable $([ "$WITH_AI" = 1 ] && echo "--extra ai")
+    uv sync --locked --no-dev --no-editable $([ "$WITH_AI" = 1 ] && echo "--extra ai") $([ "$WITH_S3" = 1 ] && echo "--extra s3")
 RUN mkdir -p /opt/finboard/models \
     && if [ "$WITH_AI" = 1 ]; then \
          FINBOARD_MODEL_DIR=/opt/finboard/models /opt/finboard/venv/bin/finboard ai fetch-model \
