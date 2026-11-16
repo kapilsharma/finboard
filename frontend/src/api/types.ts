@@ -3,6 +3,10 @@ import type { components } from './schema'
 type Schemas = components['schemas']
 
 export type Me = Schemas['MeOut']
+export type Session = Schemas['SessionOut']
+export type SignupBody = Schemas['SignupIn']
+export type LoginBody = Schemas['LoginIn']
+export type PasswordChangeBody = Schemas['PasswordChangeIn']
 export type Account = Schemas['AccountOut']
 export type AccountCreate = Schemas['AccountCreate']
 export type AccountUpdate = Schemas['AccountUpdate']

@@ -1,10 +1,12 @@
 import type { ReactNode } from 'react'
 import { useMe } from '../api/hooks'
-import { errorMessage } from '../api/client'
+import { ApiError, errorMessage } from '../api/client'
+import { SignInPage } from './SignInPage'
 import styles from './AuthGate.module.css'
 
-/** Renders the app only once we know who the user is. In local mode this always succeeds;
- *  a future login screen (server mode, M8) slots in here without touching the pages. */
+/** Renders the app only once we know who the user is. In local mode that always succeeds.
+ *  In server mode a 401 from /me means nobody is signed in, and the sign-in page shows
+ *  instead (ADR-0041). */
 export function AuthGate({ children }: { children: ReactNode }) {
   const me = useMe()
 
@@ -14,6 +16,9 @@ export function AuthGate({ children }: { children: ReactNode }) {
         Loading…
       </p>
     )
+  }
+  if (me.error instanceof ApiError && me.error.status === 401) {
+    return <SignInPage onSignedIn={() => void me.refetch()} />
   }
   if (me.isError) {
     return (

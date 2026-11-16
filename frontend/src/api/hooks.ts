@@ -2,7 +2,7 @@
 
 import { useCallback } from 'react'
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { API_BASE, api } from './client'
+import { API_BASE, api, setCsrfToken } from './client'
 import {
   IMPORT_IN_FLIGHT,
   type Account,
@@ -16,7 +16,11 @@ import {
   type ImportResource,
   type ImportStatus,
   type Job,
+  type LoginBody,
   type Me,
+  type PasswordChangeBody,
+  type Session,
+  type SignupBody,
   type ParserList,
   type Preferences,
   type ReparseBody,
@@ -82,7 +86,57 @@ export const queryKeys = {
 export const polling = { ms: 1000 }
 
 export function useMe() {
-  return useQuery({ queryKey: queryKeys.me, queryFn: () => api<Me>('/me') })
+  return useQuery({
+    queryKey: queryKeys.me,
+    queryFn: async () => {
+      const me = await api<Me>('/me')
+      setCsrfToken(me.csrf_token)
+      return me
+    },
+  })
+}
+
+// ------------------------------------------------------------------ sign-in (server mode)
+
+/** Sign in or sign up. Everything cached belongs to whoever was here before: drop it. */
+function useStartSession<Body>(path: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationKey: ['auth'],
+    mutationFn: (body: Body) => api<Session>(path, { method: 'POST', body }),
+    onSuccess: (session) => {
+      setCsrfToken(session.csrf_token)
+      qc.clear()
+    },
+  })
+}
+
+export function useLogin() {
+  return useStartSession<LoginBody>('/auth/login')
+}
+
+export function useSignup() {
+  return useStartSession<SignupBody>('/auth/signup')
+}
+
+export function useLogout() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: () => api<void>('/auth/logout', { method: 'POST' }),
+    // Whether or not the server answered: drop everything cached (the next person at this
+    // browser must not see it), then ask who we are again so AuthGate shows the sign-in page.
+    onSettled: async () => {
+      setCsrfToken(null)
+      qc.removeQueries({ predicate: (query) => query.queryKey[0] !== 'me' })
+      await qc.resetQueries({ queryKey: queryKeys.me })
+    },
+  })
+}
+
+export function useChangePassword() {
+  return useMutation({
+    mutationFn: (body: PasswordChangeBody) => api<void>('/auth/password', { method: 'POST', body }),
+  })
 }
 
 // ------------------------------------------------------------------ accounts
