@@ -1,5 +1,17 @@
 # Finboard
 
+> ### How this was built
+> The code was written by AI (Earlier Claude Fable, later by Opus and Sonnet) working from my instructions. 
+> 
+> My part:
+> - The requirements and product decisions
+> - Reviewing and approving the architecture ([ADRs](docs/adr/)),
+> - Setting the acceptance criteria in the [roadmap](docs/ROADMAP.md),
+> - The privacy and testing rules the code must follow,
+> - Checking the result on my own real bank statements.
+> 
+> It is also an experiment in how far an AI coding agent gets with minimal hand-holding.
+
 A private personal-finance app. Import your bank statements (password-protected PDFs), let
 **rules you control** categorise every transaction, and see where your money goes:
 income, spending, savings rate, monthly limits and per-account totals.
