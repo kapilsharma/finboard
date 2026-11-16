@@ -13,6 +13,8 @@ finboard inspect-layout <pdf>   print a statement's structure with contents mask
 finboard ai fetch-model  download the embedding model once (optional AI, ARCHITECTURE §18)
 finboard ai eval-suggestions  compare embeddings with the trigram baseline -> docs/ai-eval.md
 finboard ai eval         golden Ask questions against the real provider -> docs/ai-eval.md
+finboard create-user <name>    server mode: create an account (asks for a password)
+finboard set-password <name>   server mode: set a user's password and end their sessions
 finboard demo-data synthetic sample transactions and limits for the local user (empty DB only)
 """
 
@@ -59,6 +61,8 @@ def cmd_serve(args: argparse.Namespace) -> None:
     import uvicorn
 
     settings = get_settings()
+    if settings.is_server and (reason := settings.server_mode_problem()):
+        sys.exit(reason)
     if settings.env == "prod" and not settings.secret_key:
         sys.exit(
             "FINBOARD_SECRET_KEY is not set. Create it once with: "
@@ -72,7 +76,10 @@ def cmd_serve(args: argparse.Namespace) -> None:
         host=args.host or settings.host,
         port=args.port or settings.port,
         log_config=None,
-        proxy_headers=False,
+        # Server mode sits behind a TLS proxy: take the client address (for rate limits)
+        # from X-Forwarded-For, but only when the proxy is one we trust.
+        proxy_headers=settings.is_server,
+        forwarded_allow_ips=settings.forwarded_allow_ips if settings.is_server else None,
         workers=args.workers,
     )
 
@@ -300,6 +307,69 @@ def cmd_ai_eval(args: argparse.Namespace) -> None:
     print(section)
 
 
+def _read_new_password(args: argparse.Namespace) -> str:
+    if args.password_stdin:
+        return sys.stdin.readline().rstrip("\r\n")
+    if not sys.stdin.isatty():
+        sys.exit("Run this in a terminal to type the password, or pass --password-stdin.")
+    password = getpass.getpass("New password (not shown): ")
+    if getpass.getpass("Again: ") != password:
+        sys.exit("The two passwords differ.")
+    return password
+
+
+def _account_command(args: argparse.Namespace, *, create: bool) -> None:
+    import asyncio
+
+    from redis.asyncio import Redis
+
+    from finboard.auth.sessions import SessionStore
+    from finboard.db.engine import create_engine, create_sessionmaker
+    from finboard.domain.errors import FinboardError
+    from finboard.services.auth import AccountAdmin
+
+    settings = get_settings()
+    password = _read_new_password(args)
+
+    async def run() -> str:
+        engine = create_engine(settings)
+        redis = Redis.from_url(settings.redis_url)
+        try:
+            admin = AccountAdmin(create_sessionmaker(engine))
+            if create:
+                principal = await admin.create_user(
+                    username=args.username,
+                    display_name=args.display_name or "",
+                    password=password,
+                )
+                return f"Created user {principal.username}."
+            principal = await admin.set_password(username=args.username, password=password)
+            store = SessionStore(
+                redis, idle_days=settings.session_idle_days, max_days=settings.session_max_days
+            )
+            ended = await store.delete_all(principal.user_id)
+            return f"Password set for {principal.username}; {ended} session(s) signed out."
+        finally:
+            await redis.aclose()
+            await engine.dispose()
+
+    try:
+        print(asyncio.run(run()))
+    except FinboardError as exc:
+        sys.exit(exc.detail)
+
+
+def cmd_create_user(args: argparse.Namespace) -> None:
+    """Server mode: create an account. The way in when sign-up is closed (the default)."""
+    _account_command(args, create=True)
+
+
+def cmd_set_password(args: argparse.Namespace) -> None:
+    """Server mode: reset a password. Also gives the `local` user of a database that was
+    used in local mode a password, which keeps its data when moving to server mode."""
+    _account_command(args, create=False)
+
+
 def cmd_demo_data(_args: argparse.Namespace) -> None:
     """Load the synthetic handover sample into the local user (an empty Finboard only)."""
     import asyncio
@@ -463,6 +533,20 @@ def main(argv: list[str] | None = None) -> None:
     init.set_defaults(func=cmd_init)
 
     sub.add_parser("parsers", help="list installed parsers").set_defaults(func=cmd_parsers)
+
+    create_user = sub.add_parser("create-user", help="server mode: create an account")
+    create_user.add_argument("username")
+    create_user.add_argument("--display-name", help="shown in the app (default: the username)")
+    create_user.set_defaults(func=cmd_create_user)
+    set_password = sub.add_parser("set-password", help="server mode: set a user's password")
+    set_password.add_argument("username")
+    set_password.set_defaults(func=cmd_set_password)
+    for command in (create_user, set_password):
+        command.add_argument(
+            "--password-stdin",
+            action="store_true",
+            help="read the password from the first line of standard input (scripts)",
+        )
     sub.add_parser(
         "demo-data", help="load synthetic sample data (screenshots, trying Finboard out)"
     ).set_defaults(func=cmd_demo_data)

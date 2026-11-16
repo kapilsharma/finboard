@@ -16,7 +16,8 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from finboard.core.config import Settings, get_settings
 from finboard.db.engine import create_engine, create_sessionmaker
 from finboard.parsers.registry import ParserRegistry, default_registry
-from finboard.storage.blob import LocalFsBlobStore
+from finboard.storage.blob import BlobStore
+from finboard.storage.factory import build_blob_store
 from finboard.storage.secrets import RedisSecretStore
 
 
@@ -25,7 +26,7 @@ class WorkerContext:
     settings: Settings
     sessionmaker: async_sessionmaker[AsyncSession]
     redis: Redis
-    blobs: LocalFsBlobStore
+    blobs: BlobStore
     secrets: RedisSecretStore | None
     registry: ParserRegistry
 
@@ -50,7 +51,7 @@ def _ensure_initialised() -> tuple[asyncio.AbstractEventLoop, WorkerContext]:
             settings=settings,
             sessionmaker=create_sessionmaker(engine),
             redis=redis,
-            blobs=LocalFsBlobStore(settings.blob_dir),
+            blobs=build_blob_store(settings),
             secrets=RedisSecretStore(redis, secret) if secret else None,
             registry=default_registry(tuple(settings.extra_parsers)),
         )

@@ -43,6 +43,7 @@ async def meta(settings: SettingsDep) -> MetaOut:
         version=__version__,
         api_version="v1",
         mode=settings.mode.value,
+        signup_open=settings.is_server and settings.signup == "open",
         metric_definitions={
             key: MetricDefinitionOut(label=d.label, formula=d.formula, tooltip=d.tooltip)
             for key, d in METRIC_DEFINITIONS.items()

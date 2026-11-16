@@ -4,9 +4,12 @@ from enum import StrEnum
 from functools import lru_cache
 from pathlib import Path
 from typing import Literal
+from urllib.parse import urlsplit
 
 from pydantic import SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+LOOPBACK_HOSTS = frozenset({"127.0.0.1", "localhost", "::1"})
 
 
 class Mode(StrEnum):
@@ -79,6 +82,72 @@ class Settings(BaseSettings):
     ollama_url: str = "http://127.0.0.1:11434"
     ollama_model: str = "llama3.2:3b"
     ai_timeout_seconds: float = 30.0
+
+    # ---- Server mode (FINBOARD_MODE=server, ADR-0041). None of this applies in local mode.
+    # Where users reach Finboard, e.g. https://finboard.example.com. Required in server mode:
+    # its host joins the Host allow-list, and https turns the session cookie's Secure flag on.
+    public_url: str | None = None
+    # `open` lets anyone who can reach the server create an account. `closed`: the operator
+    # creates accounts with `finboard create-user`.
+    signup: Literal["open", "closed"] = "closed"
+    session_idle_days: int = 7  # a session unused for this long ends
+    session_max_days: int = 30  # and no session outlives this, used or not
+    # Wrong passwords before sign-in is refused for the rest of the window.
+    login_max_failures: int = 5
+    login_max_failures_per_ip: int = 30
+    login_window_seconds: int = 15 * 60
+    signup_per_ip_per_hour: int = 5
+    # Per signed-in user. 0 switches a limit off.
+    rate_limit_per_minute: int = 600
+    upload_rate_per_hour: int = 60
+    storage_quota_bytes: int = 5 * 1024**3  # stored statements
+    # Addresses whose X-Forwarded-For is trusted (the TLS proxy), comma-separated, or `*`.
+    forwarded_allow_ips: str = "127.0.0.1"
+
+    # ---- Blob storage (ADR-0026). `s3` needs the `s3` extra and works with any S3-compatible
+    # store. Credentials: these two, or the usual AWS environment / instance role.
+    blob_backend: Literal["local", "s3"] = "local"
+    s3_bucket: str | None = None
+    s3_prefix: str = ""
+    s3_endpoint_url: str | None = None
+    s3_region: str | None = None
+    s3_access_key_id: str | None = None
+    s3_secret_access_key: SecretStr | None = None
+
+    @property
+    def is_server(self) -> bool:
+        return self.mode is Mode.SERVER
+
+    @property
+    def cookie_secure(self) -> bool:
+        return (self.public_url or "").lower().startswith("https://")
+
+    def server_mode_problem(self) -> str | None:
+        """Why this configuration can't run in server mode, or None when it can."""
+        if not self.public_url:
+            return (
+                "FINBOARD_MODE=server needs FINBOARD_PUBLIC_URL, the address users open "
+                "(for example https://finboard.example.com)."
+            )
+        parts = urlsplit(self.public_url)
+        if parts.scheme not in ("http", "https") or not parts.hostname:
+            return "FINBOARD_PUBLIC_URL must be an http(s) URL with a host."
+        if parts.scheme == "http" and parts.hostname not in LOOPBACK_HOSTS:
+            return (
+                "FINBOARD_PUBLIC_URL is plain http on a public host: passwords and session "
+                "cookies would cross the network unencrypted. Put a TLS proxy in front and "
+                "use https (docs/HOSTING.md)."
+            )
+        return None
+
+    @property
+    def effective_allowed_hosts(self) -> list[str]:
+        hosts = list(self.allowed_hosts)
+        if self.is_server and self.public_url:
+            host = urlsplit(self.public_url).hostname
+            if host and host not in hosts:
+                hosts.append(host)
+        return hosts
 
 
 @lru_cache

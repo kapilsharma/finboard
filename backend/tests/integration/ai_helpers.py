@@ -22,9 +22,8 @@ from finboard.auth import Principal
 from finboard.core.config import Settings
 from finboard.db.models import EMBEDDING_DIMENSIONS
 from finboard.jobs import tasks
-from finboard.main import create_app
 
-from .conftest import HeaderAuthBackend, RecordingJobQueue
+from .conftest import RecordingJobQueue, api_client, running_app
 
 API = "/api/v1"
 
@@ -75,17 +74,11 @@ async def ai_app(
     ai = _ai_settings(settings, request.param)
     monkeypatch.setattr(tasks, "get_settings", lambda: ai)
     monkeypatch.setattr(embeddings, "embed", fake_embed)
-    backend = HeaderAuthBackend({"alice": alice, "bob": bob}, default="alice")
-    application = create_app(ai, auth_backend=backend, job_queue=job_queue)
-    async with application.router.lifespan_context(application):
+    async with running_app(ai, {"alice": alice, "bob": bob}, job_queue) as application:
         yield application
 
 
 @pytest.fixture
 async def ai_client(ai_app: FastAPI) -> AsyncIterator[httpx.AsyncClient]:
-    async with httpx.AsyncClient(
-        transport=httpx.ASGITransport(app=ai_app),
-        base_url="http://127.0.0.1",
-        headers={"X-Finboard-Client": "1"},
-    ) as c:
+    async with api_client(ai_app) as c:
         yield c

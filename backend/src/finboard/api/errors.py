@@ -12,8 +12,10 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from finboard.domain.errors import (
     Conflict,
     FinboardError,
+    Forbidden,
     NotFound,
     PayloadTooLarge,
+    RateLimited,
     ServiceUnavailable,
     Unauthenticated,
     ValidationFailed,
@@ -28,6 +30,8 @@ _STATUS: dict[type[FinboardError], int] = {
     Conflict: 409,
     ValidationFailed: 422,
     Unauthenticated: 401,
+    Forbidden: 403,
+    RateLimited: 429,
     ServiceUnavailable: 503,
     PayloadTooLarge: 413,
 }
@@ -52,7 +56,10 @@ def _status_for(exc: FinboardError) -> int:
 
 async def _domain_error(_request: Request, exc: Exception) -> JSONResponse:
     assert isinstance(exc, FinboardError)
-    return problem(_status_for(exc), exc.code, exc.title, exc.detail)
+    response = problem(_status_for(exc), exc.code, exc.title, exc.detail)
+    if isinstance(exc, RateLimited):
+        response.headers["Retry-After"] = str(exc.retry_after)
+    return response
 
 
 async def _validation_error(_request: Request, exc: Exception) -> JSONResponse:
